@@ -69,7 +69,6 @@ class RedditPreviewPlugin(Plugin):
                     return None
 
                 media = await response.read()
-                self.log.warning(f"File Size: {len(media)}")
 
                 if(media_type == "image"):
                     filename = name + ".jpg"
