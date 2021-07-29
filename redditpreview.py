@@ -47,10 +47,8 @@ class RedditPreviewPlugin(Plugin):
             name = data[0]['data']['children'][0]['data']['name']
             isMedia = data[0]['data']['children'][0]['data']['is_reddit_media_domain']
 
-            #await evt.respond(sub + ": " + title)
             await evt.respond(TextMessageEventContent(msgtype=MessageType.TEXT, format=Format.HTML, body=f"{sub}: {title}", formatted_body=f"""<p><a href="{url}"><b>{sub}: {title}</b></a></p>"""))
             
-
             if (isMedia):
                 media_type = data[0]['data']['children'][0]['data']['post_hint']
 
