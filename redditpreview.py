@@ -32,7 +32,7 @@ class RedditPreviewPlugin(Plugin):
             
             await evt.mark_read()
             url = ''.join(url_tup).split('?')[0]
-            query_url = url + ".json"
+            query_url = url + ".json" + "?limit=1"
             response = urllib.request.urlopen(query_url)
 
             if response.status != 200:
