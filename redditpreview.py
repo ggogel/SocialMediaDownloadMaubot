@@ -33,7 +33,11 @@ class RedditPreviewPlugin(Plugin):
             await evt.mark_read()
             url = ''.join(url_tup).split('?')[0]
             query_url = url + ".json" + "?limit=1"
-            response = urllib.request.urlopen(query_url)
+            headers = {
+                'User-Agent': 'ggogel/RedditPreviewMaubot'
+            }
+            req = Request(query_url, headers=headers)
+            response = urlopen(req)
 
             if response.status != 200:
                 self.log.warning(f"Unexpected status fetching reddit listing {query_url}: {response.status}")
