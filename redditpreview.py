@@ -1,6 +1,6 @@
-from ast import parse
+import re, json
 from typing import Type
-import urllib.parse, re, json
+from urllib.request import Request, urlopen
 from mautrix.types import ImageInfo, EventType, MessageType
 from mautrix.types.event.message import BaseFileInfo, Format, TextMessageEventContent
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
