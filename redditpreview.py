@@ -31,7 +31,7 @@ class RedditPreviewPlugin(Plugin):
         for url_tup in reddit_pattern.findall(evt.content.body):
             
             await evt.mark_read()
-            url = ''.join(url_tup)
+            url = ''.join(url_tup).split('?')[0]
             query_url = url + ".json"
             response = urllib.request.urlopen(query_url)
 
