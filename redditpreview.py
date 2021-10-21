@@ -32,8 +32,8 @@ class RedditPreviewPlugin(Plugin):
         for url_tup in reddit_pattern.findall(evt.content.body):
             
             await evt.mark_read()
-            url = quote(''.join(url_tup).split('?')[0])
-            query_url = quote(urlparse(url).path).replace('%253A', ':') + ".json" + "?limit=1"
+            url = ''.join(url_tup).split('?')[0]
+            query_url = quote(url).replace('%3A', ':') + ".json" + "?limit=1"
             headers = {
                 'User-Agent': 'ggogel/RedditPreviewMaubot'
             }
