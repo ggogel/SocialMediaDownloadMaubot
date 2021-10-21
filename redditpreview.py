@@ -1,6 +1,7 @@
 import re, json
 from typing import Type
 from urllib.request import Request, urlopen
+from urllib.parse import quote, urlparse
 from mautrix.types import ImageInfo, EventType, MessageType
 from mautrix.types.event.message import BaseFileInfo, Format, TextMessageEventContent
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
@@ -31,8 +32,8 @@ class RedditPreviewPlugin(Plugin):
         for url_tup in reddit_pattern.findall(evt.content.body):
             
             await evt.mark_read()
-            url = ''.join(url_tup).split('?')[0]
-            query_url = url + ".json" + "?limit=1"
+            url = quote(''.join(url_tup).split('?')[0])
+            query_url = quote(urlparse(url).path).replace('%253A', ':') + ".json" + "?limit=1"
             headers = {
                 'User-Agent': 'ggogel/RedditPreviewMaubot'
             }
