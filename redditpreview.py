@@ -1,4 +1,4 @@
-import re, json
+import re, json, mimetypes
 from typing import Type
 from urllib.request import Request, urlopen
 from urllib.parse import quote, urlparse
@@ -50,37 +50,35 @@ class RedditPreviewPlugin(Plugin):
             sub = data[0]['data']['children'][0]['data']['subreddit_name_prefixed']
             title = data[0]['data']['children'][0]['data']['title']
             name = data[0]['data']['children'][0]['data']['name']
-            isMedia = data[0]['data']['children'][0]['data']['is_reddit_media_domain']
-
+            
             await evt.respond(TextMessageEventContent(msgtype=MessageType.TEXT, format=Format.HTML, body=f"{sub}: {title}", formatted_body=f"""<p><a href="{url}"><b>{sub}: {title}</b></a></p>"""))
             
-            if (isMedia):
-                media_type = data[0]['data']['children'][0]['data']['post_hint']
+            # We assume that when this condition is true, the post is either an image or video
+            if 'url_overridden_by_dest' in  data[0]['data']['children'][0]['data']:
+                media_url = data[0]['data']['children'][0]['data']['url_overridden_by_dest']
+                mime_type = mimetypes.guess_type(media_url)[0]
 
-                if(media_type == "image"):
-                    media_url = data[0]['data']['children'][0]['data']['url_overridden_by_dest']
+                # Use video preview fallback URL if original URL has non-standard or no file extension. This is typically the case for "gifs" on imgur and gfycat, which are actually videos.
+                if mime_type == None:
+                    media_url = data[0]['data']['children'][0]['data']['preview']['reddit_video_preview']['fallback_url']
+                    mime_type = mimetypes.guess_type(media_url)[0]
 
-                elif(media_type == "hosted:video"):
-                    media_url = data[0]['data']['children'][0]['data']['media']['reddit_video']['fallback_url']
-
-                else:
-                    self.log.warning(f"Unknown media type {query_url}: {media_type}")
-                    return None
-                
                 response = await self.http.get(media_url)
 
                 if response.status != 200:
                     self.log.warning(f"Unexpected status fetching media {media_url}: {response.status}")
                     return None
 
+                file_extension = mimetypes.guess_extension(mime_type)
+                file_name = name + file_extension
                 media = await response.read()
 
-                if(media_type == "image"):
-                    filename = name + ".jpg"
-                    uri = await self.client.upload_media(media, mime_type='image/jpg', filename=filename)
-                    await self.client.send_image(evt.room_id, url=uri, file_name=filename, info=ImageInfo(mimetype='image/jpg'))
-
-                elif(media_type == "hosted:video"):
-                    filename = name + ".mp4"
-                    uri = await self.client.upload_media(media, mime_type='video/mp4', filename=filename)
-                    await self.client.send_file(evt.room_id, url=uri, info=BaseFileInfo(mimetype='video/mp4', size=len(media)), file_name=filename,file_type=MessageType.VIDEO)
+                if "image" in mime_type:
+                    uri = await self.client.upload_media(media, mime_type=mime_type, filename=file_name)
+                    await self.client.send_image(evt.room_id, url=uri, file_name=file_name, info=ImageInfo(mimetype='image/jpg'))
+                elif "video" in mime_type:
+                    uri = await self.client.upload_media(media, mime_type=mime_type, filename=file_name)
+                    await self.client.send_file(evt.room_id, url=uri, info=BaseFileInfo(mimetype=mime_type, size=len(media)), file_name=file_name,file_type=MessageType.VIDEO)
+                else:
+                    self.log.warning(f"Unknown media type {query_url}: {mime_type}")
+                    return None
