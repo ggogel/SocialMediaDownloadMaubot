@@ -58,9 +58,12 @@ class RedditPreviewPlugin(Plugin):
                 media_url = data[0]['data']['children'][0]['data']['url_overridden_by_dest']
                 mime_type = mimetypes.guess_type(media_url)[0]
 
-                # Use video preview fallback URL if original URL has non-standard or no file extension. This is typically the case for "gifs" on imgur and gfycat, which are actually videos.
+                # Use video fallback URL if original URL has non-standard or no file extension. This is typically the case for "gifs" on imgur and gfycat, which are actually videos.
                 if mime_type == None:
-                    media_url = data[0]['data']['children'][0]['data']['preview']['reddit_video_preview']['fallback_url']
+                    if 'reddit_video' in data[0]['data']['children'][0]['data']['secure_media']:
+                        media_url = data[0]['data']['children'][0]['data']['secure_media']['reddit_video']['fallback_url'].split('?')[0]
+                    else:
+                        media_url = data[0]['data']['children'][0]['data']['preview']['reddit_video_preview']['fallback_url'].split('?')[0]
                     mime_type = mimetypes.guess_type(media_url)[0]
 
                 response = await self.http.get(media_url)
