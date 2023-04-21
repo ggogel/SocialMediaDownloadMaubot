@@ -70,25 +70,25 @@ class RedditPreviewPlugin(Plugin):
                 file_name = name + file_extension
                 
                 if "image" in mime_type:
-                    response = urlopen(media_url)
+                    response = await self.http.get(media_url)
 
                     if response.status != 200:
                         self.log.warning(f"Unexpected status fetching media {media_url}: {response.status}")
                         return None
 
-                    media = response.read()
+                    media = await response.read()
                     uri = await self.client.upload_media(media, mime_type=mime_type, filename=file_name)
                     await self.client.send_image(evt.room_id, url=uri, file_name=file_name, info=ImageInfo(mimetype='image/jpg'))
                 elif "video" in mime_type:
                     audio_url = media_url.replace("DASH_720","DASH_audio")
                     media_url = "https://sd.rapidsave.com/download.php?permalink={}&video_url={}?source=fallback&audio_url={}?source=fallback".format(url, media_url, audio_url)
-                    response = urlopen(media_url)
+                    response = await self.http.get(media_url)
 
                     if response.status != 200:
                         self.log.warning(f"Unexpected status fetching media {media_url}: {response.status}")
                         return None
 
-                    media = response.read()
+                    media = await response.read()
                     uri = await self.client.upload_media(media, mime_type=mime_type, filename=file_name)
                     await self.client.send_file(evt.room_id, url=uri, info=BaseFileInfo(mimetype=mime_type, size=len(media)), file_name=file_name,file_type=MessageType.VIDEO)
                 else:
