@@ -1,21 +1,27 @@
-import re, json, mimetypes
+import re, json, mimetypes, os, sys, instaloader
 from typing import Type
 from urllib.request import Request, urlopen
-from urllib.parse import quote, urlparse
+from urllib.parse import quote
 from mautrix.types import ImageInfo, EventType, MessageType
 from mautrix.types.event.message import BaseFileInfo, Format, TextMessageEventContent
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from maubot import Plugin, MessageEvent
 from maubot.handlers import event
 
+
 class Config(BaseProxyConfig):
     def do_update(self, helper: ConfigUpdateHelper) -> None:
-        helper.copy("appid")
-        helper.copy("source")
-        helper.copy("response_type")
+        helper.copy("reddit.title")
+        helper.copy("reddit.photo")
+        helper.copy("reddit.video")
+        helper.copy("instagram.info")
+        helper.copy("instagram.photo")
+        helper.copy("instagram.thumbnail")
+        helper.copy("instagram.video")
 
 
 reddit_pattern = re.compile(r"^((?:https?:)?\/\/)?((?:www|m)\.)?((?:reddit\.com|redd.it))(\/r\/.*\/comments\/.*)(\/)?$")
+instagram_pattern = re.compile(r"/(?:https?:\/\/)?(?:www.)?instagram.com\/?([a-zA-Z0-9\.\_\-]+)?\/([p]+)?([reel]+)?([tv]+)?([stories]+)?\/([a-zA-Z0-9\-\_\.]+)\/?([0-9]+)?/")
 
 class RedditPreviewPlugin(Plugin):
     async def start(self) -> None:
@@ -29,8 +35,39 @@ class RedditPreviewPlugin(Plugin):
     async def on_message(self, evt: MessageEvent) -> None:
         if evt.content.msgtype != MessageType.TEXT or evt.content.body.startswith("!"):
             return
+        for url_tup in instagram_pattern.findall(evt.content.body):
+            await evt.mark_read()
+            if url_tup[5]:
+                L = instaloader.Instaloader()
+                shortcode = url_tup[5]
+                self.log.warning(shortcode)
+                post = instaloader.Post.from_shortcode(L.context, shortcode)
+                if(self.config["instagram.info"]):
+                    await evt.reply(f"Username: {post.owner_username}\nTitle: {post.title}\nCaption: {post.pcaption}\nHashtags: {post.caption_hashtags}\nMentions: {post.caption_mentions}\nLikes: {post.likes}\nComments: {post.comments}")
+                if((post.is_video and self.config["instagram.thumbnail"]) or (not post.is_video and self.config["instagram.photo"])):
+                    response = await self.http.get(post.url)
+                    if response.status != 200:
+                        self.log.warning(f"Unexpected status fetching instagram photo {post.url}: {response.status}")
+                        return None
+                    media = await response.read()
+                    mime_type='image/jpg'
+                    file_extension = ".jpg"
+                    file_name = shortcode + file_extension
+                    uri = await self.client.upload_media(media, mime_type=mime_type, filename=file_name)
+                    self.log.warning(f"{mime_type} {file_name}")
+                    await self.client.send_image(evt.room_id, url=uri, file_name=file_name, info=ImageInfo(mimetype='image/jpg'))
+                if(post.is_video and self.config["instagram.video"]):
+                    response = await self.http.get(post.video_url)
+                    if response.status != 200:
+                        self.log.warning(f"Unexpected status fetching instagram video {post.video_url}: {response.status}")
+                        return None
+                    media = await response.read()
+                    mime_type='video/mp4'
+                    file_extension = ".mp4"
+                    file_name = shortcode + file_extension
+                    uri = await self.client.upload_media(media, mime_type=mime_type, filename=file_name)
+                    await self.client.send_file(evt.room_id, url=uri, info=BaseFileInfo(mimetype=mime_type, size=len(media)), file_name=file_name,file_type=MessageType.VIDEO)
         for url_tup in reddit_pattern.findall(evt.content.body):
-            
             await evt.mark_read()
             url = ''.join(url_tup).split('?')[0]
             query_url = quote(url).replace('%3A', ':') + ".json" + "?limit=1"

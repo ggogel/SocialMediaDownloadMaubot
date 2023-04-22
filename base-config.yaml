@@ -1,0 +1,9 @@
+reddit:
+  title: False
+  photo: True
+  video: True
+instagram:
+  info: True
+  photo: True
+  thumbnail: True
+  video: True
