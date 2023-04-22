@@ -74,14 +74,13 @@ class RedditPreviewPlugin(Plugin):
             headers = {
                 'User-Agent': 'ggogel/RedditPreviewMaubot'
             }
-            req = Request(query_url, headers=headers)
-            response = urlopen(req)
+            response = await self.http.request('GET', query_url, headers=headers)
 
             if response.status != 200:
                 self.log.warning(f"Unexpected status fetching reddit listing {query_url}: {response.status}")
                 return None
             
-            response_text = response.read()
+            response_text = await response.read()
             data = json.loads(response_text.decode())
 
             sub = data[0]['data']['children'][0]['data']['subreddit_name_prefixed']
