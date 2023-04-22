@@ -43,7 +43,7 @@ class RedditPreviewPlugin(Plugin):
                 self.log.warning(shortcode)
                 post = instaloader.Post.from_shortcode(L.context, shortcode)
                 if(self.config["instagram.info"]):
-                    await evt.reply(f"Username: {post.owner_username}\nTitle: {post.title}\nCaption: {post.pcaption}\nHashtags: {post.caption_hashtags}\nMentions: {post.caption_mentions}\nLikes: {post.likes}\nComments: {post.comments}")
+                    await evt.reply(TextMessageEventContent(msgtype=MessageType.TEXT, format=Format.HTML, formatted_body=f"""<p>Username: {post.owner_username}<br>Caption: {post.pcaption}<br>Hashtags: {post.caption_hashtags}<br>Mentions: {post.caption_mentions}<br>Likes: {post.likes}<br>Comments: {post.comments}</p>"""))
                 if((post.is_video and self.config["instagram.thumbnail"]) or (not post.is_video and self.config["instagram.photo"])):
                     response = await self.http.get(post.url)
                     if response.status != 200:
