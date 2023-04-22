@@ -87,7 +87,7 @@ class RedditPreviewPlugin(Plugin):
             title = data[0]['data']['children'][0]['data']['title']
             name = data[0]['data']['children'][0]['data']['name']
             
-            await evt.respond(TextMessageEventContent(msgtype=MessageType.TEXT, format=Format.HTML, body=f"{sub}: {title}", formatted_body=f"""<p><a href="{url}"><b>{sub}: {title}</b></a></p>"""))
+            await evt.reply(TextMessageEventContent(msgtype=MessageType.TEXT, format=Format.HTML, body=f"{sub}: {title}", formatted_body=f"""<p><b>{sub}: {title}</b></p>"""))
             
             # We assume that when this condition is true, the post is either an image or video
             if 'url_overridden_by_dest' in  data[0]['data']['children'][0]['data']:
