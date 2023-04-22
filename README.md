@@ -1,6 +1,13 @@
 # SocialMediaDownloadMaubot
 
-[Maubot](https://github.com/maubot/maubot) plugin that responds to a link of a reddit post with sub name and title. If the post is an image or video, it will upload it to the chat.
+[Maubot](https://github.com/maubot/maubot) plugin that downloads content from various social media websites given a link.
+
+Currently supported:
+  - Reddit
+  - Instagram
+  - YouTube
+
+Which content should be downloaded can be configured in the plugin configuration.
 
 ## Installation
 
