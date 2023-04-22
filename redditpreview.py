@@ -1,6 +1,5 @@
-import re, json, mimetypes, os, sys, instaloader
+import re, json, mimetypes, instaloader, urllib
 from typing import Type
-from urllib.request import Request, urlopen
 from urllib.parse import quote
 from mautrix.types import ImageInfo, EventType, MessageType
 from mautrix.types.event.message import BaseFileInfo, Format, TextMessageEventContent
@@ -20,10 +19,14 @@ class Config(BaseProxyConfig):
         helper.copy("instagram.image")
         helper.copy("instagram.thumbnail")
         helper.copy("instagram.video")
+        helper.copy("youtube.enabled")
+        helper.copy("youtube.info")
+        helper.copy("youtube.thumbnail")
 
 
 reddit_pattern = re.compile(r"^((?:https?:)?\/\/)?((?:www|m)\.)?((?:reddit\.com|redd.it))(\/r\/.*\/comments\/.*)(\/)?$")
 instagram_pattern = re.compile(r"/(?:https?:\/\/)?(?:www.)?instagram.com\/?([a-zA-Z0-9\.\_\-]+)?\/([p]+)?([reel]+)?([tv]+)?([stories]+)?\/([a-zA-Z0-9\-\_\.]+)\/?([0-9]+)?/")
+youtube_pattern = re.compile(r"^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$")
 
 class RedditPreviewPlugin(Plugin):
     async def start(self) -> None:
@@ -37,6 +40,40 @@ class RedditPreviewPlugin(Plugin):
     async def on_message(self, evt: MessageEvent) -> None:
         if evt.content.msgtype != MessageType.TEXT or evt.content.body.startswith("!"):
             return
+        for url_tup in youtube_pattern.findall(evt.content.body):
+            await evt.mark_read()
+            if self.config["youtube.enabled"]:
+                url = ''.join(url_tup)
+                if "youtu.be" in url:
+                    video_id = url.split("youtu.be/")[1]
+                else:
+                    video_id = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)['v'][0]
+                video_id = video_id.split("?", 1)[0]
+
+                params = {"format": "json", "url": url}
+                query_url = "https://www.youtube.com/oembed"
+                query_string = urllib.parse.urlencode(params)
+                query_url = query_url + "?" + query_string
+                response = await self.http.get(query_url)
+                if response.status != 200:
+                    self.log.warning(f"Unexpected status fetching video title {query_url}: {response.status}")
+                    return None
+                response_text = await response.read()
+                data = json.loads(response_text.decode())
+
+                if self.config["youtube.info"]:
+                    await evt.reply(data['title'])
+
+                if self.config["youtube.thumbnail"]:
+                    thumbnail_link = "https://img.youtube.com/vi/" + video_id + "/hqdefault.jpg"
+                    response = await self.http.get(thumbnail_link)
+                    if response.status != 200:
+                        self.log.warning(f"Unexpected status fetching image {thumbnail_link}: {response.status}")
+                        return None
+                    thumbnail = await response.read()
+                    filename = video_id + ".jpg"
+                    uri = await self.client.upload_media(thumbnail, mime_type='image/jpg', filename=filename)
+                    await self.client.send_image(evt.room_id, url=uri, file_name=filename, info=ImageInfo(mimetype='image/jpg'))
         for url_tup in instagram_pattern.findall(evt.content.body):
             await evt.mark_read()
             if self.config["instagram.enabled"] and url_tup[5]:

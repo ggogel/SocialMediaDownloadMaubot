@@ -9,3 +9,7 @@ instagram:
   image: True
   thumbnail: False
   video: True
+youtube:
+  enabled: True
+  info: True
+  thumbnail: True
