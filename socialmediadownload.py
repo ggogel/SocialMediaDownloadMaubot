@@ -88,8 +88,8 @@ class SocialMediaDownloadPlugin(Plugin):
                 return
             thumbnail = await response.read()
             filename = f"{video_id}.jpg"
-            uri = await self.client.upload_media(thumbnail, mime_type='image/jpg', filename=filename)
-            await self.client.send_image(evt.room_id, url=uri, file_name=filename, info=ImageInfo(mimetype='image/jpg'))
+            uri = await self.client.upload_media(thumbnail, mime_type='image/jpeg', filename=filename)
+            await self.client.send_image(evt.room_id, url=uri, file_name=filename, info=ImageInfo(mimetype='image/jpeg'))
 
     async def handle_instagram(self, evt, url_tup):
         L = instaloader.Instaloader()
@@ -107,12 +107,12 @@ class SocialMediaDownloadPlugin(Plugin):
                 return
 
             media = await response.read()
-            mime_type = 'image/jpg'
+            mime_type = 'image/jpeg'
             file_extension = ".jpg"
             file_name = shortcode + file_extension
             uri = await self.client.upload_media(media, mime_type=mime_type, filename=file_name)
             self.log.warning(f"{mime_type} {file_name}")
-            await self.client.send_image(evt.room_id, url=uri, file_name=file_name, info=ImageInfo(mimetype='image/jpg'))
+            await self.client.send_image(evt.room_id, url=uri, file_name=file_name, info=ImageInfo(mimetype='image/jpeg'))
 
         if post.is_video and self.config["instagram.video"]:
             response = await self.http.get(post.video_url)
@@ -169,7 +169,7 @@ class SocialMediaDownloadPlugin(Plugin):
 
                 media = await response.read()
                 uri = await self.client.upload_media(media, mime_type=mime_type, filename=file_name)
-                await self.client.send_image(evt.room_id, url=uri, file_name=file_name, info=ImageInfo(mimetype='image/jpg'))
+                await self.client.send_image(evt.room_id, url=uri, file_name=file_name, info=ImageInfo(mimetype='image/jpeg'))
 
             elif "video" in mime_type and self.config["reddit.video"]:
                 audio_url = media_url.replace("DASH_720", "DASH_audio")
