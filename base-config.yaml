@@ -1,9 +1,11 @@
 reddit:
-  title: False
-  photo: True
+  enabled: True
+  info: False
+  image: True
   video: True
 instagram:
+  enabled: True
   info: True
-  photo: True
-  thumbnail: True
+  image: True
+  thumbnail: False
   video: True
