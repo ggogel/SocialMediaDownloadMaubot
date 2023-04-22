@@ -16,7 +16,7 @@ class Config(BaseProxyConfig):
         helper.copy("reddit.image")
         helper.copy("reddit.video")
         helper.copy("instagram.info")
-        helper.copy("instagram.photo")
+        helper.copy("instagram.image")
         helper.copy("instagram.thumbnail")
         helper.copy("instagram.video")
 
@@ -45,10 +45,10 @@ class RedditPreviewPlugin(Plugin):
                 post = instaloader.Post.from_shortcode(L.context, shortcode)
                 if(self.config["instagram.info"]):
                     await evt.reply(TextMessageEventContent(msgtype=MessageType.TEXT, format=Format.HTML, formatted_body=f"""<p>Username: {post.owner_username}<br>Caption: {post.pcaption}<br>Hashtags: {post.caption_hashtags}<br>Mentions: {post.caption_mentions}<br>Likes: {post.likes}<br>Comments: {post.comments}</p>"""))
-                if((post.is_video and self.config["instagram.thumbnail"]) or (not post.is_video and self.config["instagram.photo"])):
+                if((post.is_video and self.config["instagram.thumbnail"]) or (not post.is_video and self.config["instagram.image"])):
                     response = await self.http.get(post.url)
                     if response.status != 200:
-                        self.log.warning(f"Unexpected status fetching instagram photo {post.url}: {response.status}")
+                        self.log.warning(f"Unexpected status fetching instagram image {post.url}: {response.status}")
                         return None
                     media = await response.read()
                     mime_type='image/jpg'
