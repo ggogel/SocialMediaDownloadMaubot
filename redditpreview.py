@@ -15,6 +15,7 @@ class Config(BaseProxyConfig):
         helper.copy("reddit.info")
         helper.copy("reddit.image")
         helper.copy("reddit.video")
+        helper.copy("instagram.enabled")
         helper.copy("instagram.info")
         helper.copy("instagram.image")
         helper.copy("instagram.thumbnail")
@@ -38,7 +39,7 @@ class RedditPreviewPlugin(Plugin):
             return
         for url_tup in instagram_pattern.findall(evt.content.body):
             await evt.mark_read()
-            if url_tup[5]:
+            if self.config["instagram.enabled"] and url_tup[5]:
                 L = instaloader.Instaloader()
                 shortcode = url_tup[5]
                 self.log.warning(shortcode)
