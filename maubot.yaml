@@ -3,8 +3,8 @@ id: me.gogel.maubot.socialmediadownload
 version: 1.0.0
 license: MIT
 modules:
-- instaloader
-- socialmediadownload
+  - instaloader
+  - socialmediadownload
 main_class: socialmediadownload/SocialMediaDownloadPlugin
 database: false
 config: true
