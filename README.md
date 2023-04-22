@@ -1,4 +1,4 @@
-# RedditPreviewMaubot
+# SocialMediaDownloadMaubot
 
 [Maubot](https://github.com/maubot/maubot) plugin that responds to a link of a reddit post with sub name and title. If the post is an image or video, it will upload it to the chat.
 

@@ -1,11 +1,11 @@
 maubot: 0.1.0
-id: me.gogel.maubot.redditpreview
-version: 0.0.5
+id: me.gogel.maubot.socialmediadownload
+version: 1.0.0
 license: MIT
 modules:
 - instaloader
-- redditpreview
-main_class: redditpreview/RedditPreviewPlugin
+- socialmediadownload
+main_class: socialmediadownload/SocialMediaDownloadPlugin
 database: false
 config: true
 extra_files:

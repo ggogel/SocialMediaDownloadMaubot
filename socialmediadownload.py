@@ -28,7 +28,7 @@ reddit_pattern = re.compile(r"^((?:https?:)?\/\/)?((?:www|m)\.)?((?:reddit\.com|
 instagram_pattern = re.compile(r"/(?:https?:\/\/)?(?:www.)?instagram.com\/?([a-zA-Z0-9\.\_\-]+)?\/([p]+)?([reel]+)?([tv]+)?([stories]+)?\/([a-zA-Z0-9\-\_\.]+)\/?([0-9]+)?/")
 youtube_pattern = re.compile(r"^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$")
 
-class RedditPreviewPlugin(Plugin):
+class SocialMediaDownloadPlugin(Plugin):
     async def start(self) -> None:
         await super().start()
 
@@ -112,7 +112,7 @@ class RedditPreviewPlugin(Plugin):
                 url = ''.join(url_tup).split('?')[0]
                 query_url = quote(url).replace('%3A', ':') + ".json" + "?limit=1"
                 headers = {
-                    'User-Agent': 'ggogel/RedditPreviewMaubot'
+                    'User-Agent': 'ggogel/SocialMediaDownloadMaubot'
                 }
                 response = await self.http.request('GET', query_url, headers=headers)
 
