@@ -19,6 +19,15 @@ class Config(BaseProxyConfig):
             for suffix in ["enabled", "info", "image", "video", "thumbnail"]:
                 helper.copy(f"{prefix}.{suffix}")
 
+        for suffix in ["text", "notice"]:
+            helper.copy(f"msgtypes.{suffix}")
+
+#        helper.base["msgtypes"] = tuple()
+#        if "msgtypes.text" in helper.source and helper.source["msgtypes.text"]:
+#            helper.base["msgtypes"] += (MessageType.TEXT,)
+#        if "msgtypes.notice" in helper.source and helper.source["msgtypes.notice"]:
+#            helper.base["msgtypes"] += (MessageType.NOTICE,)
+
 reddit_pattern = re.compile(r"^((?:https?:)?\/\/)?((?:www|m|old|nm)\.)?((?:reddit\.com|redd.it))(\/r\/.*\/comments\/.*)(\/)?$")
 instagram_pattern = re.compile(r"/(?:https?:\/\/)?(?:www.)?instagram.com\/?([a-zA-Z0-9\.\_\-]+)?\/([p]+)?([reel]+)?([tv]+)?([stories]+)?\/([a-zA-Z0-9\-\_\.]+)\/?([0-9]+)?/")
 youtube_pattern = re.compile(r"^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$")
@@ -32,10 +41,21 @@ class SocialMediaDownloadPlugin(Plugin):
         return Config
 
     @event.on(EventType.ROOM_MESSAGE)
-    async def on_message(self, evt: MessageEvent) -> None:
-        if evt.content.msgtype != MessageType.TEXT or evt.content.body.startswith("!"):
+    async def on_message(self, evt: MessageEvent) -> None:#
+        msgtypes = tuple()
+        if self.config["msgtypes.text"]:
+            msgtypes += (MessageType.TEXT,)
+        if self.config["msgtypes.notice"]:
+            msgtypes += (MessageType.NOTICE,)
+
+        self.log.info(f"config: {self.config['msgtypes.text']} {self.config['msgtypes.notice']}")
+        self.log.info(f"listening for msgtypes: {msgtypes}")
+
+        if evt.content.msgtype not in msgtypes or evt.content.body.startswith("!"):
             return
-        
+
+        self.log.info(f"received message: {evt.content.body}")
+
         for url_tup in youtube_pattern.findall(evt.content.body):
             await evt.mark_read()
             if self.config["youtube.enabled"]:
