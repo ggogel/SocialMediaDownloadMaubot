@@ -27,19 +27,19 @@ jobs:
         RELEASE_EXIST=$(gh release view $VERSION > /dev/null 2>&1 && echo "true" || echo "false")
         echo "RELEASE_EXIST=$RELEASE_EXIST" >> $GITHUB_ENV
 
-    - name: Generate changelog
+    - name: Generate Changelog
       if: env.RELEASE_EXIST == 'false'
       run: |
-        CHANGELOG=$(git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"- %s" -- base-config.yaml maubot.yaml socialmediadownload.py instaloader/)
-        CHANGELOG="${CHANGELOG//$'\n'/%0A}"
-        echo "CHANGELOG=$CHANGELOG" >> $GITHUB_ENV
+        echo "Changelog:" > CHANGELOG.md
+        git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"- %h: %s" -- base-config.yaml maubot.yaml socialmediadownload.py instaloader >> CHANGELOG.md
 
-    - name: Create GitHub Release
+    - name: Package Release
       if: env.RELEASE_EXIST == 'false'
-      uses: actions/create-release@v1
-      with:
-        tag_name: ${{ env.VERSION }}
-        release_name: ${{ env.VERSION }}
-        body: ${{ env.CHANGELOG }}
-        draft: false
-        prerelease: false
+      run: |
+        zip -r package.zip base-config.yaml maubot.yaml socialmediadownload.py instaloader
+        mv package.zip package.mbp
+
+    - name: Create and Upload GitHub Release
+      if: env.RELEASE_EXIST == 'false'
+      run: |
+        gh release create ${{ env.VERSION }} package.mbp -t ${{ env.VERSION }} -F CHANGELOG.md
