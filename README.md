@@ -1,6 +1,6 @@
 # SocialMediaDownloadMaubot
 
-[Maubot](https://github.com/maubot/maubot) plugin that downloads content from various social media websites given a link.
+[Maubot](https://github.com/maubot/maubot) plugin that downloads content from various social media websites given a link and posts it to the Matrix room.
 
 Currently supported:
   - Reddit
