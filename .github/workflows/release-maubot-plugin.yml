@@ -1,0 +1,61 @@
+name: Release Maubot Plugin
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install zip jq
+
+    - name: Extract version from maubot.yaml
+      run: |
+        VERSION=$(cat maubot.yaml | grep 'version' | cut -d ':' -f 2 | xargs)
+        echo "VERSION=$VERSION"
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+    - name: Check if release already exists
+      run: |
+        RELEASE_EXIST=$(gh release view $VERSION > /dev/null 2>&1 && echo "true" || echo "false")
+        echo "RELEASE_EXIST=$RELEASE_EXIST"
+        echo "RELEASE_EXIST=$RELEASE_EXIST" >> $GITHUB_ENV
+
+    - name: Generate changelog
+      if: env.RELEASE_EXIST == 'false'
+      run: |
+        CHANGELOG=$(git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"- %s" -- base-config.yaml maubot.yaml socialmediadownload.py instaloader/)
+        echo "CHANGELOG=$CHANGELOG"
+        echo "CHANGELOG=$CHANGELOG" >> $GITHUB_ENV
+
+    - name: Zip files and dependencies, then rename to mbp
+      if: env.RELEASE_EXIST == 'false'
+      run: |
+        zip -r plugin.zip base-config.yaml maubot.yaml socialmediadownload.py instaloader/
+        mv plugin.zip plugin.mbp
+
+    - name: Create GitHub Release
+      if: env.RELEASE_EXIST == 'false'
+      uses: actions/create-release@v1
+      with:
+        tag_name: ${{ env.VERSION }}
+        release_name: Release ${{ env.VERSION }}
+        body: ${{ env.CHANGELOG }}
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Asset
+      if: env.RELEASE_EXIST == 'false'
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./plugin.mbp
+        asset_name: plugin.mbp
+        asset_content_type: application/zip
