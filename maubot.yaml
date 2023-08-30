@@ -1,6 +1,6 @@
 maubot: 0.1.0
 id: me.gogel.maubot.socialmediadownload
-version: 1.0.0
+version: 1.0.1
 license: MIT
 modules:
   - instaloader
