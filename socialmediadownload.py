@@ -19,7 +19,7 @@ class Config(BaseProxyConfig):
             for suffix in ["enabled", "info", "image", "video", "thumbnail"]:
                 helper.copy(f"{prefix}.{suffix}")
 
-reddit_pattern = re.compile(r"^((?:https?:)?\/\/)?((?:www|m|old|nm)\.)?((?:reddit\.com|redd.it))(\/r\/.*\/comments\/.*)(\/)?$")
+reddit_pattern = re.compile(r"^((?:https?:)?\/\/)?((?:www|m|old|nm)\.)?((?:reddit\.com|redd.it))(\/r\/.*\/(?:comments|s)\/.*)(\/)?$")
 instagram_pattern = re.compile(r"/(?:https?:\/\/)?(?:www.)?instagram.com\/?([a-zA-Z0-9\.\_\-]+)?\/([p]+)?([reel]+)?([tv]+)?([stories]+)?\/([a-zA-Z0-9\-\_\.]+)\/?([0-9]+)?/")
 youtube_pattern = re.compile(r"^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$")
 
@@ -127,8 +127,23 @@ class SocialMediaDownloadPlugin(Plugin):
             uri = await self.client.upload_media(media, mime_type=mime_type, filename=file_name)
             await self.client.send_file(evt.room_id, url=uri, info=BaseFileInfo(mimetype=mime_type, size=len(media)), file_name=file_name, file_type=MessageType.VIDEO)
 
+    async def get_redirected_url(self, short_url: str) -> str:
+        async with self.http.get(short_url, allow_redirects=True) as response:
+            if response.status == 200:
+                return str(response.url)
+            else:
+                self.log.warning(f"Unexpected status fetching redirected URL: {response.status}")
+                return None
+    
     async def handle_reddit(self, evt, url_tup):
         url = ''.join(url_tup).split('?')[0]
+
+        if "/s/" in url:
+            url = await self.get_redirected_url(url)
+            if not url:
+                return
+        
+        url = await self.get_redirected_url(url)
         query_url = quote(url).replace('%3A', ':') + ".json" + "?limit=1"
         headers = {'User-Agent': 'ggogel/SocialMediaDownloadMaubot'}
         response = await self.http.request('GET', query_url, headers=headers)
