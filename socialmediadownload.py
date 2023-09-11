@@ -3,6 +3,7 @@ import json
 import mimetypes
 import instaloader
 import urllib
+import yarl
 
 from typing import Type
 from urllib.parse import quote
@@ -115,7 +116,7 @@ class SocialMediaDownloadPlugin(Plugin):
             await self.client.send_image(evt.room_id, url=uri, file_name=file_name, info=ImageInfo(mimetype='image/jpeg'))
 
         if post.is_video and self.config["instagram.video"]:
-            response = await self.http.get(post.video_url)
+            response = await self.http.get(yarl.URL(post.video_url,encoded=True))
             if response.status != 200:
                 self.log.warning(f"Unexpected status fetching instagram video {post.video_url}: {response.status}")
                 return
