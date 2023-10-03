@@ -20,9 +20,9 @@ class Config(BaseProxyConfig):
             for suffix in ["enabled", "info", "image", "video", "thumbnail"]:
                 helper.copy(f"{prefix}.{suffix}")
 
-reddit_pattern = re.compile(r"^((?:https?:)?\/\/)?((?:www|m|old|nm)\.)?((?:reddit\.com|redd.it))(\/r\/.*\/(?:comments|s)\/.*)(\/)?$")
-instagram_pattern = re.compile(r"/(?:https?:\/\/)?(?:www.)?instagram.com\/?([a-zA-Z0-9\.\_\-]+)?\/([p]+)?([reel]+)?([tv]+)?([stories]+)?\/([a-zA-Z0-9\-\_\.]+)\/?([0-9]+)?/")
-youtube_pattern = re.compile(r"^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$")
+reddit_pattern = re.compile(r"^((?:https?:)?\/\/)?((?:www|m|old|nm)\.)?((?:reddit\.com|redd\.it))(\/r\/.*\/(?:comments|s)\/.*)(\/)?$")
+instagram_pattern = re.compile(r"^(?:https?:\/\/)?(?:www\.)?instagram\.com\/?([a-zA-Z0-9\.\_\-]+)?\/([p]+)?([reel]+)?([tv]+)?([stories]+)?\/([a-zA-Z0-9\-\_\.]+)\/?([0-9]+)?/$")
+youtube_pattern = re.compile(r"^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu\.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$")
 
 class SocialMediaDownloadPlugin(Plugin):
     async def start(self) -> None:
@@ -36,7 +36,7 @@ class SocialMediaDownloadPlugin(Plugin):
     async def on_message(self, evt: MessageEvent) -> None:
         if evt.content.msgtype != MessageType.TEXT or evt.content.body.startswith("!"):
             return
-        
+
         for url_tup in youtube_pattern.findall(evt.content.body):
             await evt.mark_read()
             if self.config["youtube.enabled"]:
@@ -135,7 +135,7 @@ class SocialMediaDownloadPlugin(Plugin):
             else:
                 self.log.warning(f"Unexpected status fetching redirected URL: {response.status}")
                 return None
-    
+
     async def handle_reddit(self, evt, url_tup):
         url = ''.join(url_tup).split('?')[0]
 
@@ -143,7 +143,7 @@ class SocialMediaDownloadPlugin(Plugin):
             url = await self.get_redirected_url(url)
             if not url:
                 return
-        
+
         url = await self.get_redirected_url(url)
         query_url = quote(url).replace('%3A', ':') + ".json" + "?limit=1"
         headers = {'User-Agent': 'ggogel/SocialMediaDownloadMaubot'}
