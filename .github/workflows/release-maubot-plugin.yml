@@ -1,0 +1,45 @@
+name: Release Maubot Plugin
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Extract version from maubot.yaml
+      run: |
+        VERSION=$(cat maubot.yaml | grep 'version' | cut -d ':' -f 2 | xargs)
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+    - name: Check if release already exists
+      run: |
+        RELEASE_EXIST=$(gh release view $VERSION > /dev/null 2>&1 && echo "true" || echo "false")
+        echo "RELEASE_EXIST=$RELEASE_EXIST" >> $GITHUB_ENV
+
+    - name: Generate Changelog
+      if: env.RELEASE_EXIST == 'false'
+      run: |
+        echo "Changelog:" > CHANGELOG.md
+        git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"- %h: %s" -- base-config.yaml maubot.yaml socialmediadownload.py instaloader >> CHANGELOG.md
+
+    - name: Package Release
+      if: env.RELEASE_EXIST == 'false'
+      run: |
+        zip -r package.zip base-config.yaml maubot.yaml socialmediadownload.py instaloader
+        mv package.zip package.mbp
+
+    - name: Create and Upload GitHub Release
+      if: env.RELEASE_EXIST == 'false'
+      run: |
+        gh release create ${{ env.VERSION }} package.mbp -t ${{ env.VERSION }} -F CHANGELOG.md

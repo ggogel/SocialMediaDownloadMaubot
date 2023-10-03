@@ -3,6 +3,7 @@ import json
 import mimetypes
 import instaloader
 import urllib
+import yarl
 
 from typing import Type
 from urllib.parse import quote
@@ -28,13 +29,13 @@ class Config(BaseProxyConfig):
 #        if "msgtypes.notice" in helper.source and helper.source["msgtypes.notice"]:
 #            helper.base["msgtypes"] += (MessageType.NOTICE,)
 
-reddit_pattern = re.compile(r"^((?:https?:)?\/\/)?((?:www|m|old|nm)\.)?((?:reddit\.com|redd.it))(\/r\/.*\/comments\/.*)(\/)?$")
+reddit_pattern = re.compile(r"^((?:https?:)?\/\/)?((?:www|m|old|nm)\.)?((?:reddit\.com|redd.it))(\/r\/.*\/(?:comments|s)\/.*)(\/)?$")
 instagram_pattern = re.compile(r"/(?:https?:\/\/)?(?:www.)?instagram.com\/?([a-zA-Z0-9\.\_\-]+)?\/([p]+)?([reel]+)?([tv]+)?([stories]+)?\/([a-zA-Z0-9\-\_\.]+)\/?([0-9]+)?/")
 youtube_pattern = re.compile(r"^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$")
 
 class SocialMediaDownloadPlugin(Plugin):
     async def start(self) -> None:
-        await super().start()
+        self.config.load_and_update()
 
     @classmethod
     def get_config_class(cls) -> Type[BaseProxyConfig]:
@@ -135,7 +136,7 @@ class SocialMediaDownloadPlugin(Plugin):
             await self.client.send_image(evt.room_id, url=uri, file_name=file_name, info=ImageInfo(mimetype='image/jpeg'))
 
         if post.is_video and self.config["instagram.video"]:
-            response = await self.http.get(post.video_url)
+            response = await self.http.get(yarl.URL(post.video_url,encoded=True))
             if response.status != 200:
                 self.log.warning(f"Unexpected status fetching instagram video {post.video_url}: {response.status}")
                 return
@@ -147,8 +148,23 @@ class SocialMediaDownloadPlugin(Plugin):
             uri = await self.client.upload_media(media, mime_type=mime_type, filename=file_name)
             await self.client.send_file(evt.room_id, url=uri, info=BaseFileInfo(mimetype=mime_type, size=len(media)), file_name=file_name, file_type=MessageType.VIDEO)
 
+    async def get_redirected_url(self, short_url: str) -> str:
+        async with self.http.get(short_url, allow_redirects=True) as response:
+            if response.status == 200:
+                return str(response.url)
+            else:
+                self.log.warning(f"Unexpected status fetching redirected URL: {response.status}")
+                return None
+    
     async def handle_reddit(self, evt, url_tup):
         url = ''.join(url_tup).split('?')[0]
+
+        if "/s/" in url:
+            url = await self.get_redirected_url(url)
+            if not url:
+                return
+        
+        url = await self.get_redirected_url(url)
         query_url = quote(url).replace('%3A', ':') + ".json" + "?limit=1"
         headers = {'User-Agent': 'ggogel/SocialMediaDownloadMaubot'}
         response = await self.http.request('GET', query_url, headers=headers)
