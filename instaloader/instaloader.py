@@ -524,7 +524,7 @@ class Instaloader:
         .. versionadded:: 4.3"""
 
         http_response = self.context.get_raw(url)
-        date_object = None  # type: Optional[datetime]
+        date_object: Optional[datetime] = None
         if 'Last-Modified' in http_response.headers:
             date_object = datetime.strptime(http_response.headers["Last-Modified"], '%a, %d %b %Y %H:%M:%S GMT')
             date_object = date_object.replace(tzinfo=timezone.utc)
@@ -584,6 +584,23 @@ class Instaloader:
 
         .. versionadded:: 4.4"""
         self.download_title_pic(hashtag.profile_pic_url, '#' + hashtag.name, 'profile_pic', None)
+
+    @_requires_login
+    def save_session(self) -> dict:
+        """Saves internally stored :class:`requests.Session` object to :class:`dict`.
+
+        :raises LoginRequiredException: If called without being logged in.
+
+        .. versionadded:: 4.10
+        """
+        return self.context.save_session()
+
+    def load_session(self, username: str, session_data: dict) -> None:
+        """Internally stores :class:`requests.Session` object from :class:`dict`.
+
+        .. versionadded:: 4.10
+        """
+        self.context.load_session(username, session_data)
 
     @_requires_login
     def save_session_to_file(self, filename: Optional[str] = None) -> None:
@@ -712,7 +729,7 @@ class Instaloader:
                             post.get_sidecar_nodes(self.slide_start, self.slide_end),
                             start=self.slide_start % post.mediacount + 1
                     ):
-                        suffix = str(edge_number)  # type: Optional[str]
+                        suffix: Optional[str] = str(edge_number)
                         if '{filename}' in self.filename_pattern:
                             suffix = None
                         if self.download_pictures and (not sidecar_node.is_video or self.download_video_thumbnails):
@@ -945,11 +962,11 @@ class Instaloader:
         """
         for user_highlight in self.get_highlights(user):
             name = user_highlight.owner_username
-            highlight_target = (filename_target
+            highlight_target: Union[str, Path] = (filename_target
                                 if filename_target
                                 else (Path(_PostPathFormatter.sanitize_path(name, self.sanitize_paths)) /
                                       _PostPathFormatter.sanitize_path(user_highlight.title,
-                                                                       self.sanitize_paths)))  # type: Union[str, Path]
+                                                                       self.sanitize_paths)))
             self.context.log("Retrieving highlights \"{}\" from profile {}".format(user_highlight.title, name))
             self.download_highlight_cover(user_highlight, highlight_target)
             totalcount = user_highlight.itemcount
