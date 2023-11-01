@@ -4,6 +4,10 @@ import mimetypes
 import instaloader
 import urllib
 import yarl
+import requests
+import asyncio
+import concurrent.futures
+
 
 from typing import Type
 from urllib.parse import quote
@@ -13,16 +17,17 @@ from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from maubot import Plugin, MessageEvent
 from maubot.handlers import event
 
-
 class Config(BaseProxyConfig):
     def do_update(self, helper: ConfigUpdateHelper) -> None:
-        for prefix in ["reddit", "instagram", "youtube"]:
+        for prefix in ["reddit", "instagram", "youtube", "tiktok"]:
             for suffix in ["enabled", "info", "image", "video", "thumbnail"]:
                 helper.copy(f"{prefix}.{suffix}")
 
 reddit_pattern = re.compile(r"((?:https?:)?\/\/)?((?:www|m|old|nm)\.)?((?:reddit\.com|redd\.it))(\/r\/[^/]+\/(?:comments|s)\/[a-zA-Z0-9_\-]+)")
 instagram_pattern = re.compile(r"(?:https?:\/\/)?(?:www\.)?instagram\.com\/?([a-zA-Z0-9\.\_\-]+)?\/([p]+)?([reel]+)?([tv]+)?([stories]+)?\/([a-zA-Z0-9\-\_\.]+)\/?([0-9]+)?")
 youtube_pattern = re.compile(r"((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu\.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?")
+tiktok_pattern = re.compile(r"((?:https?:)?\/\/)?((?:www|m|vm)\.)?((?:tiktok\.com))(\/[@a-zA-Z0-9\-\_\.]+)?(\/video\/)?([a-zA-Z0-9\-\_]+)?")
+
 
 class SocialMediaDownloadPlugin(Plugin):
     async def start(self) -> None:
@@ -51,6 +56,85 @@ class SocialMediaDownloadPlugin(Plugin):
             await evt.mark_read()
             if self.config["reddit.enabled"]:
                 await self.handle_reddit(evt, url_tup)
+
+        for url_tup in tiktok_pattern.findall(evt.content.body):
+            await evt.mark_read()
+            if self.config["tiktok.enabled"]:
+                await self.handle_tiktok(evt, url_tup)
+
+    async def get_ttdownloader_params(self, tokensDict, url) -> list:
+        cookies = {
+            'PHPSESSID': tokensDict['PHPSESSID']
+        }
+        headers = {
+            'authority': 'ttdownloader.com',
+            'accept': '*/*',
+            'accept-language': 'en-US,en;q=0.9',
+            'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'origin': 'https://ttdownloader.com',
+            'referer': 'https://ttdownloader.com/',
+            'sec-ch-ua': '"Not?A_Brand";v="8", "Chromium";v="108", "Google Chrome";v="108"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-origin',
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+            'x-requested-with': 'XMLHttpRequest',
+        }
+        data = {
+            'url': url,
+            'format': '',
+            'token': tokensDict['token'],
+        }
+        return cookies, headers, data
+        
+    def get_ttdownloader_tokens(self) -> dict:
+        tokens = {}
+        response = requests.get('https://ttdownloader.com/')
+        if response.status_code != 200:
+            self.log.warning(f"Unexpected status fetching tokens for ttdownloader.com: {response.status_code}")
+            return
+        
+        token_match = re.search(r'<input type="hidden" id="token" name="token" value="([^"]+)"', response.text)
+        token = token_match.group(1) if token_match else None
+        tokens["token"] = token
+
+        for cookie in response.cookies:
+            tokens[cookie.name] = cookie.value
+        
+        return tokens
+
+    async def handle_tiktok(self, evt, url_tup):  
+        url = ''.join(url_tup)
+
+        if self.config["tiktok.video"]:
+            loop = asyncio.get_running_loop()
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                tokensDict = await loop.run_in_executor(
+                pool, self.get_ttdownloader_tokens)
+
+            cookies, headers, data = await self.get_ttdownloader_params(tokensDict, url)
+            response = await self.http.post('https://ttdownloader.com/search/',cookies=cookies, headers=headers, data=data)
+            
+            if response.status != 200:
+                self.log.warning(f"Unexpected status sending download request to ttdownloader.com: {response.status}")
+                return
+            
+            href_values = re.findall(r'href="([^"]+)"', await response.text())
+            valid_urls = [url for url in href_values if yarl.URL(url).scheme in ['http', 'https']]
+            response = await self.http.get(valid_urls[0])
+            
+            if response.status != 200:
+                self.log.warning(f"Unexpected status fetching video for TikTok URL {url_tup}: {response.status}")
+                return
+
+            media = await response.read()
+            mime_type = 'video/mp4'
+            file_extension = ".mp4"
+            file_name = str(hash(url)) + file_extension
+            uri = await self.client.upload_media(media, mime_type=mime_type, filename=file_name)
+            await self.client.send_file(evt.room_id, url=uri, info=BaseFileInfo(mimetype=mime_type, size=len(media)), file_name=file_name, file_type=MessageType.VIDEO)     
 
     async def get_youtube_video_id(self, url):
         if "youtu.be" in url:
