@@ -6,6 +6,7 @@ Currently supported:
   - Reddit
   - Instagram
   - YouTube
+  - TikTok
 
 Which content should be downloaded can be configured in the plugin configuration.
 
