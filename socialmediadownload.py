@@ -41,9 +41,9 @@ class SocialMediaDownloadPlugin(Plugin):
 
     @event.on(EventType.ROOM_MESSAGE)
     async def on_message(self, evt: MessageEvent) -> None:
-        if (evt.content.msgtype != MessageType.TEXT or
-            evt.content.body.startswith("!") or
-            (self.config["respond_to_notice"] and (evt.content.msgtype != MessageType.TEXT or evt.content.msgtype != MessageType.NOTICE))):
+        if (evt.content.msgtype != MessageType.TEXT and
+        not (self.config["respond_to_notice"] and evt.content.msgtype == MessageType.NOTICE) or
+        evt.content.body.startswith("!")):
             return
 
 
