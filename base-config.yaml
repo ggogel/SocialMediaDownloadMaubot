@@ -16,3 +16,4 @@ youtube:
 tiktok:
   enabled: True
   video: True
+respond_to_notice: False

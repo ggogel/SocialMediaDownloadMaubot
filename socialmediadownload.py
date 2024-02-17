@@ -23,6 +23,8 @@ class Config(BaseProxyConfig):
             for suffix in ["enabled", "info", "image", "video", "thumbnail"]:
                 helper.copy(f"{prefix}.{suffix}")
 
+        helper.copy("respond_to_notice")
+
 reddit_pattern = re.compile(r"((?:https?:)?\/\/)?((?:www|m|old|nm)\.)?((?:reddit\.com|redd\.it))(\/r\/[^/]+\/(?:comments|s)\/[a-zA-Z0-9_\-]+)")
 instagram_pattern = re.compile(r"(?:https?:\/\/)?(?:www\.)?instagram\.com\/?([a-zA-Z0-9\.\_\-]+)?\/([p]+)?([reel]+)?([tv]+)?([stories]+)?\/([a-zA-Z0-9\-\_\.]+)\/?([0-9]+)?")
 youtube_pattern = re.compile(r"((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu\.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?")
@@ -39,8 +41,11 @@ class SocialMediaDownloadPlugin(Plugin):
 
     @event.on(EventType.ROOM_MESSAGE)
     async def on_message(self, evt: MessageEvent) -> None:
-        if evt.content.msgtype != MessageType.TEXT or evt.content.body.startswith("!"):
+        if (evt.content.msgtype != MessageType.TEXT and
+        not (self.config["respond_to_notice"] and evt.content.msgtype == MessageType.NOTICE) or
+        evt.content.body.startswith("!")):
             return
+
 
         for url_tup in youtube_pattern.findall(evt.content.body):
             await evt.mark_read()
