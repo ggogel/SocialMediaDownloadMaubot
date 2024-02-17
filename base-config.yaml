@@ -13,4 +13,7 @@ youtube:
   enabled: True
   info: True
   thumbnail: True
+tiktok:
+  enabled: True
+  video: True
 respond_to_notice: False

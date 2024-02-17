@@ -1,14 +1,15 @@
 # SocialMediaDownloadMaubot
 
-[Maubot](https://github.com/maubot/maubot) plugin that downloads content from various social media websites given a link and posts it to the Matrix room.
+Share social media content directly in your Matrix room with this [Maubot](https://github.com/maubot/maubot) plugin! Just paste a link, and it will download and post the content for everyone to see.
 
-Currently supported:
+Currently supported social media platforms:
   - Reddit
   - Instagram
   - YouTube
+  - TikTok
 
-Which content should be downloaded can be configured in the plugin configuration.
+Choose what to download by configuring the plugin.
 
 ## Installation
 
-Download the latest .mbp from the Release section and add it as plugin in the Maubot Manager. No further configuration needed.
+Download the latest .mbp from the Release section and add it as plugin in the Maubot Manager.
