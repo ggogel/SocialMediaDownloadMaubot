@@ -269,7 +269,7 @@ class SocialMediaDownloadPlugin(Plugin):
 
                 media = await response.read()
                 uri = await self.client.upload_media(media, mime_type=mime_type, filename=file_name)
-                await self.client.send_image(evt.room_id, url=uri, file_name=file_name, info=ImageInfo(mimetype='image/jpeg'))
+                await self.client.send_image(evt.room_id, url=uri, file_name=file_name, info=ImageInfo(mimetype=mime_type))
 
             elif "video" in mime_type and self.config["reddit.video"]:
                 audio_url = media_url.replace("DASH_720", "DASH_audio")
