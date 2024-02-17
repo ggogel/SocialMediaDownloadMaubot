@@ -13,6 +13,4 @@ youtube:
   enabled: True
   info: True
   thumbnail: True
-msgtypes:
-  text: True
-  notice: False
+respond_to_notice: False
