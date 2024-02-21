@@ -224,6 +224,16 @@ class SocialMediaDownloadPlugin(Plugin):
             else:
                 self.log.warning(f"Unexpected status fetching redirected URL: {response.status}")
                 return None
+            
+    async def send_image(self, evt, media_url, mime_type, file_name):
+        response = await self.http.get(media_url)
+        if response.status != 200:
+            self.log.warning(f"Unexpected status fetching media {media_url}: {response.status}")
+            return
+
+        media = await response.read()
+        uri = await self.client.upload_media(media, mime_type=mime_type, filename=file_name)
+        await self.client.send_image(evt.room_id, url=uri, file_name=file_name, info=ImageInfo(mimetype=mime_type))
 
     async def handle_reddit(self, evt, url_tup):
         url = ''.join(url_tup).split('?')[0]
@@ -255,6 +265,13 @@ class SocialMediaDownloadPlugin(Plugin):
             mime_type = mimetypes.guess_type(media_url)[0]
 
             if mime_type is None:
+                if 'is_gallery' in post_data and post_data['is_gallery']:
+                    for media_id, media_info in post_data['media_metadata'].items():
+                        media_url = (media_info['s']['u']).replace("preview", "i")
+                        mime_type = media_info['m']
+                        file_name = media_id
+                        await self.send_image(evt, media_url, mime_type, file_name)
+                    return
                 if 'reddit_video' in post_data['secure_media']:
                     fallback_url = post_data['secure_media']['reddit_video']['fallback_url']
                 else:
@@ -266,15 +283,7 @@ class SocialMediaDownloadPlugin(Plugin):
             file_name = name + file_extension
 
             if "image" in mime_type and self.config["reddit.image"]:
-                response = await self.http.get(media_url)
-
-                if response.status != 200:
-                    self.log.warning(f"Unexpected status fetching media {media_url}: {response.status}")
-                    return
-
-                media = await response.read()
-                uri = await self.client.upload_media(media, mime_type=mime_type, filename=file_name)
-                await self.client.send_image(evt.room_id, url=uri, file_name=file_name, info=ImageInfo(mimetype=mime_type))
+                await self.send_image(evt, media_url, mime_type, file_name)
 
             elif "video" in mime_type and self.config["reddit.video"]:
                 audio_url = media_url.replace("DASH_720", "DASH_audio")
