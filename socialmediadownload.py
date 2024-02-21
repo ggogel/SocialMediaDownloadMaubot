@@ -272,10 +272,14 @@ class SocialMediaDownloadPlugin(Plugin):
                         file_name = media_id
                         await self.send_image(evt, media_url, mime_type, file_name)
                     return
-                if 'reddit_video' in post_data['secure_media']:
+                elif 'secure_media' in post_data and 'reddit_video' in post_data['secure_media']:
                     fallback_url = post_data['secure_media']['reddit_video']['fallback_url']
-                else:
+                elif 'preview' in post_data and 'reddit_video_preview' in post_data['preview']:
                     fallback_url = post_data['preview']['reddit_video_preview']['fallback_url']
+                else:
+                    self.log.warning(f"Unable to determine media url for {query_url}")
+                    return
+                
                 media_url = fallback_url.split('?')[0]
                 mime_type = mimetypes.guess_type(media_url)[0]
 
