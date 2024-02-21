@@ -287,6 +287,11 @@ class SocialMediaDownloadPlugin(Plugin):
                     return
 
                 media = await response.read()
+
+                if len(media) == 0:
+                    self.log.warning(f"Received 0 bytes when fetching media {download_url}")
+                    return
+
                 uri = await self.client.upload_media(media, mime_type=mime_type, filename=file_name)
                 await self.client.send_file(evt.room_id, url=uri, info=BaseFileInfo(mimetype=mime_type, size=len(media)), file_name=file_name, file_type=MessageType.VIDEO)
 
