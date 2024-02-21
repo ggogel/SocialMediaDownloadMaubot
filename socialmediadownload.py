@@ -278,6 +278,7 @@ class SocialMediaDownloadPlugin(Plugin):
 
             elif "video" in mime_type and self.config["reddit.video"]:
                 audio_url = media_url.replace("DASH_720", "DASH_audio")
+                url = urllib.parse.quote(url)
                 download_url = f"https://sd.rapidsave.com/download.php?permalink={url}&video_url={media_url}?source=fallback&audio_url={audio_url}?source=fallback"
                 response = await self.http.get(download_url)
 
