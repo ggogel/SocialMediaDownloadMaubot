@@ -131,3 +131,6 @@ dmypy.json
 # Maubot
 *.zip
 *.mbp
+
+# Mac
+.DS_Store
