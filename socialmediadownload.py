@@ -182,7 +182,7 @@ class SocialMediaDownloadPlugin(Plugin):
             await self.client.send_image(evt.room_id, url=uri, file_name=filename, info=ImageInfo(mimetype='image/jpeg'))
 
     async def handle_instagram(self, evt, url_tup):
-        L = instaloader.Instaloader()
+        L = instaloader.Instaloader(user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36")
         shortcode = url_tup[5]
         self.log.warning(shortcode)
         post = instaloader.Post.from_shortcode(L.context, shortcode)
