@@ -3,7 +3,6 @@ import json
 import os
 import pickle
 import random
-import re
 import shutil
 import sys
 import textwrap
@@ -33,8 +32,8 @@ def copy_session(session: requests.Session, request_timeout: Optional[float] = N
 
 
 def default_user_agent() -> str:
-    return 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 ' \
-           '(KHTML, like Gecko) Chrome/92.0.4515.131 Safari/537.36'
+    return ('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
+            '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
 
 
 def default_iphone_headers() -> Dict[str, Any]:
@@ -211,6 +210,10 @@ class InstaloaderContext:
         """Not meant to be used directly, use :meth:`Instaloader.save_session`."""
         return requests.utils.dict_from_cookiejar(self._session.cookies)
 
+    def update_cookies(self, cookie):
+        """.. versionadded:: 4.11"""
+        self._session.cookies.update(cookie)
+
     def load_session(self, username, sessiondata):
         """Not meant to be used directly, use :meth:`Instaloader.load_session`."""
         session = requests.Session()
@@ -256,18 +259,23 @@ class InstaloaderContext:
         # Override default timeout behavior.
         # Need to silence mypy bug for this. See: https://github.com/python/mypy/issues/2427
         session.request = partial(session.request, timeout=self.request_timeout) # type: ignore
-        csrf_json = self.get_json('accounts/login/', {}, session=session)
-        csrf_token = csrf_json['config']['csrf_token']
+
+        # Make a request to Instagram's root URL, which will set the session's csrftoken cookie
+        # Not using self.get_json() here, because we need to access the cookie
+        session.get('https://www.instagram.com/')
+        # Add session's csrftoken cookie to session headers
+        csrf_token = session.cookies.get_dict()['csrftoken']
         session.headers.update({'X-CSRFToken': csrf_token})
-        # Not using self.get_json() here, because we need to access csrftoken cookie
+
         self.do_sleep()
         # Workaround credits to pgrimaud.
         # See: https://github.com/pgrimaud/instagram-user-feed/commit/96ad4cf54d1ad331b337f325c73e664999a6d066
         enc_password = '#PWD_INSTAGRAM_BROWSER:0:{}:{}'.format(int(datetime.now().timestamp()), passwd)
-        login = session.post('https://www.instagram.com/accounts/login/ajax/',
+        login = session.post('https://www.instagram.com/api/v1/web/accounts/login/ajax/',
                              data={'enc_password': enc_password, 'username': user}, allow_redirects=True)
         try:
             resp_json = login.json()
+
         except json.decoder.JSONDecodeError as err:
             raise ConnectionException(
                 "Login error: JSON decode fail, {} - {}.".format(login.status_code, login.reason)
@@ -403,23 +411,6 @@ class InstaloaderContext:
                 raise TooManyRequestsException("429 Too Many Requests")
             if resp.status_code != 200:
                 raise ConnectionException("HTTP error code {}.".format(resp.status_code))
-            is_html_query = not is_graphql_query and not "__a" in params and host == "www.instagram.com"
-            if is_html_query:
-                match = re.search(r'window\._sharedData = (.*);</script>', resp.text)
-                if match is None:
-                    raise QueryReturnedNotFoundException("Could not find \"window._sharedData\" in html response.")
-                resp_json = json.loads(match.group(1))
-                entry_data = resp_json.get('entry_data')
-                post_or_profile_page = list(entry_data.values())[0] if entry_data is not None else None
-                if post_or_profile_page is None:
-                    raise ConnectionException("\"window._sharedData\" does not contain required keys.")
-                # If GraphQL data is missing in `window._sharedData`, search for it in `__additionalDataLoaded`.
-                if 'graphql' not in post_or_profile_page[0]:
-                    match = re.search(r'window\.__additionalDataLoaded\(.*?({.*"graphql":.*})\);</script>',
-                                      resp.text)
-                    if match is not None:
-                        post_or_profile_page[0]['graphql'] = json.loads(match.group(1))['graphql']
-                return resp_json
             else:
                 resp_json = resp.json()
             if 'status' in resp_json and resp_json['status'] != "ok":
