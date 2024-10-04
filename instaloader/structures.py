@@ -232,20 +232,31 @@ class Post:
             "title": media.get("title"),
             "viewer_has_liked": media["has_liked"],
             "edge_media_preview_like": {"count": media["like_count"]},
+            "accessibility_caption": media.get("accessibility_caption"),
+            "comments": media.get("comment_count"),
             "iphone_struct": media,
         }
         with suppress(KeyError):
             fake_node["display_url"] = media['image_versions2']['candidates'][0]['url']
-        with suppress(KeyError):
+        with suppress(KeyError, TypeError):
             fake_node["video_url"] = media['video_versions'][-1]['url']
             fake_node["video_duration"] = media["video_duration"]
             fake_node["video_view_count"] = media["view_count"]
-        with suppress(KeyError):
-            fake_node["edge_sidecar_to_children"] = {"edges": [{"node": {
-                "display_url": node['image_versions2']['candidates'][0]['url'],
-                "is_video": media_types[node["media_type"]] == "GraphVideo",
-            }} for node in media["carousel_media"]]}
+        with suppress(KeyError, TypeError):
+            fake_node["edge_sidecar_to_children"] = {"edges": [{"node":
+                Post._convert_iphone_carousel(node, media_types)}
+                for node in media["carousel_media"]]}
         return cls(context, fake_node, Profile.from_iphone_struct(context, media["user"]) if "user" in media else None)
+
+    @staticmethod
+    def _convert_iphone_carousel(iphone_node: Dict[str, Any], media_types: Dict[int, str]) -> Dict[str, Any]:
+        fake_node = {
+            "display_url": iphone_node["image_versions2"]["candidates"][0]["url"],
+            "is_video": media_types[iphone_node["media_type"]] == "GraphVideo",
+        }
+        if "video_versions" in iphone_node and iphone_node["video_versions"] is not None:
+            fake_node["video_url"] = iphone_node["video_versions"][0]["url"]
+        return fake_node
 
     @staticmethod
     def shortcode_to_mediaid(code: str) -> int:
@@ -330,7 +341,7 @@ class Post:
         if not self._context.iphone_support:
             raise IPhoneSupportDisabledException("iPhone support is disabled.")
         if not self._context.is_logged_in:
-            raise LoginRequiredException("--login required to access iPhone media info endpoint.")
+            raise LoginRequiredException("Login required to access iPhone media info endpoint.")
         if not self._iphone_struct_:
             data = self._context.get_iphone_json(path='api/v1/media/{}/info/'.format(self.mediaid), params={})
             self._iphone_struct_ = data['items'][0]
@@ -685,6 +696,9 @@ class Post:
         .. versionchanged:: 4.7
            Change return type to ``Iterable``.
         """
+        if not self._context.is_logged_in:
+            raise LoginRequiredException("Login required to access comments of a post.")
+
         def _postcommentanswer(node):
             return PostCommentAnswer(id=int(node['id']),
                                      created_at_utc=datetime.utcfromtimestamp(node['created_at']),
@@ -749,7 +763,7 @@ class Post:
            Require being logged in (as required by Instagram).
         """
         if not self._context.is_logged_in:
-            raise LoginRequiredException("--login required to access likes of a post.")
+            raise LoginRequiredException("Login required to access likes of a post.")
         if self.likes == 0:
             # Avoid doing additional requests if there are no comments
             return
@@ -894,8 +908,7 @@ class Profile:
                                       'include_reel': True,
                                       'include_suggested_users': False,
                                       'include_logged_out_extras': False,
-                                      'include_highlight_reels': False},
-                                     rhx_gis=context.root_rhx_gis)['data']['user']
+                                      'include_highlight_reels': False})['data']['user']
         if data:
             profile = cls(context, data['reel']['owner'])
         else:
@@ -926,7 +939,7 @@ class Profile:
 
         .. versionadded:: 4.5.2"""
         if not context.is_logged_in:
-            raise LoginRequiredException("--login required to access own profile.")
+            raise LoginRequiredException("Login required to access own profile.")
         return cls(context, context.graphql_query("d6f4427fbe92d846298cf93df0b937d3", {})["data"]["user"])
 
     def _asdict(self):
@@ -980,7 +993,7 @@ class Profile:
         if not self._context.iphone_support:
             raise IPhoneSupportDisabledException("iPhone support is disabled.")
         if not self._context.is_logged_in:
-            raise LoginRequiredException("--login required to access iPhone profile info endpoint.")
+            raise LoginRequiredException("Login required to access iPhone profile info endpoint.")
         if not self._iphone_struct_:
             data = self._context.get_iphone_json(path='api/v1/users/{}/info/'.format(self.userid), params={})
             self._iphone_struct_ = data['user']
@@ -1171,14 +1184,17 @@ class Profile:
         :rtype: NodeIterator[Post]"""
         self._obtain_metadata()
         return NodeIterator(
-            self._context,
-            '003056d32c2554def87228bc3fd9668a',
-            lambda d: d['data']['user']['edge_owner_to_timeline_media'],
-            lambda n: Post(self._context, n, self),
-            {'id': self.userid},
-            'https://www.instagram.com/{0}/'.format(self.username),
-            self._metadata('edge_owner_to_timeline_media'),
-            Profile._make_is_newest_checker()
+            context = self._context,
+            edge_extractor = lambda d: d['data']['xdt_api__v1__feed__user_timeline_graphql_connection'],
+            node_wrapper = lambda n: Post.from_iphone_struct(self._context, n),
+            query_variables = {'data': {
+                'count': 12, 'include_relationship_info': True,
+                'latest_besties_reel_media': True, 'latest_reel_media': True},
+             'username': self.username},
+            query_referer = 'https://www.instagram.com/{0}/'.format(self.username),
+            is_first = Profile._make_is_newest_checker(),
+            doc_id = '7898261790222653',
+            query_hash = None,
         )
 
     def get_saved_posts(self) -> NodeIterator[Post]:
@@ -1187,7 +1203,7 @@ class Profile:
         :rtype: NodeIterator[Post]"""
 
         if self.username != self._context.username:
-            raise LoginRequiredException("--login={} required to get that profile's saved posts.".format(self.username))
+            raise LoginRequiredException(f"Login as {self.username} required to get that profile's saved posts.")
 
         return NodeIterator(
             self._context,
@@ -1247,7 +1263,7 @@ class Profile:
         .. versionadded:: 4.10
         """
         if not self._context.is_logged_in:
-            raise LoginRequiredException("--login required to get a profile's followers.")
+            raise LoginRequiredException("Login required to get a profile's followers.")
         self._obtain_metadata()
         return NodeIterator(
             self._context,
@@ -1266,7 +1282,7 @@ class Profile:
         :rtype: NodeIterator[Profile]
         """
         if not self._context.is_logged_in:
-            raise LoginRequiredException("--login required to get a profile's followers.")
+            raise LoginRequiredException("Login required to get a profile's followers.")
         self._obtain_metadata()
         return NodeIterator(
             self._context,
@@ -1285,7 +1301,7 @@ class Profile:
         :rtype: NodeIterator[Profile]
         """
         if not self._context.is_logged_in:
-            raise LoginRequiredException("--login required to get a profile's followees.")
+            raise LoginRequiredException("Login required to get a profile's followees.")
         self._obtain_metadata()
         return NodeIterator(
             self._context,
@@ -1304,7 +1320,7 @@ class Profile:
         .. versionadded:: 4.4
         """
         if not self._context.is_logged_in:
-            raise LoginRequiredException("--login required to get a profile's similar accounts.")
+            raise LoginRequiredException("Login required to get a profile's similar accounts.")
         self._obtain_metadata()
         yield from (Profile(self._context, edge["node"]) for edge in
                     self._context.graphql_query("ad99dd9d3646cc3c0dda65debcd266a7",
@@ -1383,7 +1399,7 @@ class StoryItem:
         if not self._context.iphone_support:
             raise IPhoneSupportDisabledException("iPhone support is disabled.")
         if not self._context.is_logged_in:
-            raise LoginRequiredException("--login required to access iPhone media info endpoint.")
+            raise LoginRequiredException("Login required to access iPhone media info endpoint.")
         if not self._iphone_struct_:
             data = self._context.get_iphone_json(
                 path='api/v1/feed/reels_media/?reel_ids={}'.format(self.owner_id), params={}

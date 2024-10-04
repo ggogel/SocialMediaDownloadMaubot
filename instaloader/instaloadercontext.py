@@ -1,4 +1,3 @@
-import hashlib
 import json
 import os
 import pickle
@@ -9,7 +8,7 @@ import textwrap
 import time
 import urllib.parse
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta
 from functools import partial
 from typing import Any, Callable, Dict, Iterator, List, Optional, Union
@@ -33,7 +32,7 @@ def copy_session(session: requests.Session, request_timeout: Optional[float] = N
 
 def default_user_agent() -> str:
     return ('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
-            '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+            '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36')
 
 
 def default_iphone_headers() -> Dict[str, Any]:
@@ -94,7 +93,6 @@ class InstaloaderContext:
         self.quiet = quiet
         self.max_connection_attempts = max_connection_attempts
         self._graphql_page_length = 50
-        self._root_rhx_gis = None
         self.two_factor_auth_pending = None
         self.iphone_support = iphone_support
         self.iphone_headers = default_iphone_headers()
@@ -150,6 +148,13 @@ class InstaloaderContext:
         print(msg, file=sys.stderr)
         if repeat_at_end:
             self.error_log.append(msg)
+
+    @property
+    def has_stored_errors(self) -> bool:
+        """Returns whether any error has been reported and stored to be repeated at program termination.
+
+        .. versionadded: 4.12"""
+        return bool(self.error_log)
 
     def close(self):
         """Print error log and close session"""
@@ -236,17 +241,26 @@ class InstaloaderContext:
 
     def test_login(self) -> Optional[str]:
         """Not meant to be used directly, use :meth:`Instaloader.test_login`."""
-        data = self.graphql_query("d6f4427fbe92d846298cf93df0b937d3", {})
-        return data["data"]["user"]["username"] if data["data"]["user"] is not None else None
+        try:
+            data = self.graphql_query("d6f4427fbe92d846298cf93df0b937d3", {})
+            return data["data"]["user"]["username"] if data["data"]["user"] is not None else None
+        except (AbortDownloadException, ConnectionException) as err:
+            self.error(f"Error when checking if logged in: {err}")
+            return None
 
     def login(self, user, passwd):
         """Not meant to be used directly, use :meth:`Instaloader.login`.
 
-        :raises InvalidArgumentException: If the provided username does not exist.
         :raises BadCredentialsException: If the provided password is wrong.
-        :raises ConnectionException: If connection to Instagram failed.
         :raises TwoFactorAuthRequiredException: First step of 2FA login done, now call
-           :meth:`Instaloader.two_factor_login`."""
+           :meth:`Instaloader.two_factor_login`.
+        :raises LoginException: An error happened during login (for example, and invalid response).
+           Or if the provided username does not exist.
+
+        .. versionchanged:: 4.12
+           Raises LoginException instead of ConnectionException when an error happens.
+           Raises LoginException instead of InvalidArgumentException when the username does not exist.
+        """
         # pylint:disable=import-outside-toplevel
         import http.client
         # pylint:disable=protected-access
@@ -277,7 +291,7 @@ class InstaloaderContext:
             resp_json = login.json()
 
         except json.decoder.JSONDecodeError as err:
-            raise ConnectionException(
+            raise LoginException(
                 "Login error: JSON decode fail, {} - {}.".format(login.status_code, login.reason)
             ) from err
         if resp_json.get('two_factor_required'):
@@ -289,31 +303,32 @@ class InstaloaderContext:
                                             resp_json['two_factor_info']['two_factor_identifier'])
             raise TwoFactorAuthRequiredException("Login error: two-factor authentication required.")
         if resp_json.get('checkpoint_url'):
-            raise ConnectionException("Login: Checkpoint required. Point your browser to "
-                                      "https://www.instagram.com{} - "
-                                      "follow the instructions, then retry.".format(resp_json.get('checkpoint_url')))
+            raise LoginException(
+                f"Login: Checkpoint required. Point your browser to {resp_json.get('checkpoint_url')} - "
+                f"follow the instructions, then retry."
+            )
         if resp_json['status'] != 'ok':
             if 'message' in resp_json:
-                raise ConnectionException("Login error: \"{}\" status, message \"{}\".".format(resp_json['status'],
-                                                                                               resp_json['message']))
+                raise LoginException("Login error: \"{}\" status, message \"{}\".".format(resp_json['status'],
+                                                                                          resp_json['message']))
             else:
-                raise ConnectionException("Login error: \"{}\" status.".format(resp_json['status']))
+                raise LoginException("Login error: \"{}\" status.".format(resp_json['status']))
         if 'authenticated' not in resp_json:
             # Issue #472
             if 'message' in resp_json:
-                raise ConnectionException("Login error: Unexpected response, \"{}\".".format(resp_json['message']))
+                raise LoginException("Login error: Unexpected response, \"{}\".".format(resp_json['message']))
             else:
-                raise ConnectionException("Login error: Unexpected response, this might indicate a blocked IP.")
+                raise LoginException("Login error: Unexpected response, this might indicate a blocked IP.")
         if not resp_json['authenticated']:
             if resp_json['user']:
                 # '{"authenticated": false, "user": true, "status": "ok"}'
                 raise BadCredentialsException('Login error: Wrong password.')
             else:
                 # '{"authenticated": false, "user": false, "status": "ok"}'
-                # Raise InvalidArgumentException rather than BadCredentialException, because BadCredentialException
+                # Raise LoginException rather than BadCredentialException, because BadCredentialException
                 # triggers re-asking of password in Instaloader.interactive_login(), which makes no sense if the
                 # username is invalid.
-                raise InvalidArgumentException('Login error: User {} does not exist.'.format(user))
+                raise LoginException('Login error: User {} does not exist.'.format(user))
         # '{"authenticated": true, "user": true, "userId": ..., "oneTapPrompt": false, "status": "ok"}'
         session.headers.update({'X-CSRFToken': login.cookies['csrftoken']})
         self._session = session
@@ -351,33 +366,61 @@ class InstaloaderContext:
         if self.sleep:
             time.sleep(min(random.expovariate(0.6), 15.0))
 
+    @staticmethod
+    def _response_error(resp: requests.Response) -> str:
+        extra_from_json: Optional[str] = None
+        with suppress(json.decoder.JSONDecodeError):
+            resp_json = resp.json()
+            if "status" in resp_json:
+                extra_from_json = (
+                    f"\"{resp_json['status']}\" status, message \"{resp_json['message']}\""
+                    if "message" in resp_json
+                    else f"\"{resp_json['status']}\" status"
+                )
+        return (
+            f"{resp.status_code} {resp.reason}"
+            f"{f' - {extra_from_json}' if extra_from_json is not None else ''}"
+            f" when accessing {resp.url}"
+        )
+
     def get_json(self, path: str, params: Dict[str, Any], host: str = 'www.instagram.com',
                  session: Optional[requests.Session] = None, _attempt=1,
-                 response_headers: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                 response_headers: Optional[Dict[str, Any]] = None,
+                 use_post: bool = False) -> Dict[str, Any]:
         """JSON request to Instagram.
 
         :param path: URL, relative to the given domain which defaults to www.instagram.com/
-        :param params: GET parameters
+        :param params: request parameters
         :param host: Domain part of the URL from where to download the requested JSON; defaults to www.instagram.com
         :param session: Session to use, or None to use self.session
+        :param use_post: Use POST instead of GET to make the request
         :return: Decoded response dictionary
         :raises QueryReturnedBadRequestException: When the server responds with a 400.
         :raises QueryReturnedNotFoundException: When the server responds with a 404.
         :raises ConnectionException: When query repeatedly failed.
+
+        .. versionchanged:: 4.13
+           Added `use_post` parameter.
         """
         is_graphql_query = 'query_hash' in params and 'graphql/query' in path
+        is_doc_id_query = 'doc_id' in params and 'graphql/query' in path
         is_iphone_query = host == 'i.instagram.com'
-        is_other_query = not is_graphql_query and host == "www.instagram.com"
+        is_other_query = not is_graphql_query and not is_doc_id_query and host == "www.instagram.com"
         sess = session if session else self._session
         try:
             self.do_sleep()
             if is_graphql_query:
                 self._rate_controller.wait_before_query(params['query_hash'])
+            if is_doc_id_query:
+                self._rate_controller.wait_before_query(params['doc_id'])
             if is_iphone_query:
                 self._rate_controller.wait_before_query('iphone')
             if is_other_query:
                 self._rate_controller.wait_before_query('other')
-            resp = sess.get('https://{0}/{1}'.format(host, path), params=params, allow_redirects=False)
+            if use_post:
+                resp = sess.post('https://{0}/{1}'.format(host, path), data=params, allow_redirects=False)
+            else:
+                resp = sess.get('https://{0}/{1}'.format(host, path), params=params, allow_redirects=False)
             if resp.status_code in self.fatal_status_codes:
                 redirect = " redirect to {}".format(resp.headers['location']) if 'location' in resp.headers else ""
                 body = ""
@@ -392,7 +435,7 @@ class InstaloaderContext:
                 if (redirect_url.startswith('https://www.instagram.com/accounts/login') or
                     redirect_url.startswith('https://i.instagram.com/accounts/login')):
                     if not self.is_logged_in:
-                        raise LoginRequiredException("Redirected to login page. Use --login.")
+                        raise LoginRequiredException("Redirected to login page. Use --login or --load-cookies.")
                     raise AbortDownloadException("Redirected to login page. You've been logged out, please wait " +
                                                  "some time, recreate the session and try again")
                 if redirect_url.startswith('https://{}/'.format(host)):
@@ -404,21 +447,17 @@ class InstaloaderContext:
                 response_headers.clear()
                 response_headers.update(resp.headers)
             if resp.status_code == 400:
-                raise QueryReturnedBadRequestException("400 Bad Request")
+                raise QueryReturnedBadRequestException(self._response_error(resp))
             if resp.status_code == 404:
-                raise QueryReturnedNotFoundException("404 Not Found")
+                raise QueryReturnedNotFoundException(self._response_error(resp))
             if resp.status_code == 429:
-                raise TooManyRequestsException("429 Too Many Requests")
+                raise TooManyRequestsException(self._response_error(resp))
             if resp.status_code != 200:
-                raise ConnectionException("HTTP error code {}.".format(resp.status_code))
+                raise ConnectionException(self._response_error(resp))
             else:
                 resp_json = resp.json()
             if 'status' in resp_json and resp_json['status'] != "ok":
-                if 'message' in resp_json:
-                    raise ConnectionException("Returned \"{}\" status, message \"{}\".".format(resp_json['status'],
-                                                                                               resp_json['message']))
-                else:
-                    raise ConnectionException("Returned \"{}\" status.".format(resp_json['status']))
+                raise ConnectionException(self._response_error(resp))
             return resp_json
         except (ConnectionException, json.decoder.JSONDecodeError, requests.exceptions.RequestException) as err:
             error_string = "JSON Query to {}: {}".format(path, err)
@@ -432,6 +471,8 @@ class InstaloaderContext:
                 if isinstance(err, TooManyRequestsException):
                     if is_graphql_query:
                         self._rate_controller.handle_429(params['query_hash'])
+                    if is_doc_id_query:
+                        self._rate_controller.handle_429(params['doc_id'])
                     if is_iphone_query:
                         self._rate_controller.handle_429('iphone')
                     if is_other_query:
@@ -443,14 +484,48 @@ class InstaloaderContext:
                 raise ConnectionException(error_string) from err
 
     def graphql_query(self, query_hash: str, variables: Dict[str, Any],
-                      referer: Optional[str] = None, rhx_gis: Optional[str] = None) -> Dict[str, Any]:
+                      referer: Optional[str] = None) -> Dict[str, Any]:
         """
         Do a GraphQL Query.
 
         :param query_hash: Query identifying hash.
         :param variables: Variables for the Query.
         :param referer: HTTP Referer, or None.
-        :param rhx_gis: 'rhx_gis' variable as somewhere returned by Instagram, needed to 'sign' request
+        :return: The server's response dictionary.
+
+        .. versionchanged:: 4.13.1
+           Removed the `rhx_gis` parameter.
+        """
+        with copy_session(self._session, self.request_timeout) as tmpsession:
+            tmpsession.headers.update(self._default_http_header(empty_session_only=True))
+            del tmpsession.headers['Connection']
+            del tmpsession.headers['Content-Length']
+            tmpsession.headers['authority'] = 'www.instagram.com'
+            tmpsession.headers['scheme'] = 'https'
+            tmpsession.headers['accept'] = '*/*'
+            if referer is not None:
+                tmpsession.headers['referer'] = urllib.parse.quote(referer)
+
+            variables_json = json.dumps(variables, separators=(',', ':'))
+
+            resp_json = self.get_json('graphql/query',
+                                      params={'query_hash': query_hash,
+                                              'variables': variables_json},
+                                      session=tmpsession)
+        if 'status' not in resp_json:
+            self.error("GraphQL response did not contain a \"status\" field.")
+        return resp_json
+
+    def doc_id_graphql_query(self, doc_id: str, variables: Dict[str, Any],
+                             referer: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Do a doc_id-based GraphQL Query using method POST.
+
+        .. versionadded:: 4.13
+
+        :param doc_id: doc_id for the query.
+        :param variables: Variables for the Query.
+        :param referer: HTTP Referer, or None.
         :return: The server's response dictionary.
         """
         with copy_session(self._session, self.request_timeout) as tmpsession:
@@ -465,16 +540,12 @@ class InstaloaderContext:
 
             variables_json = json.dumps(variables, separators=(',', ':'))
 
-            if rhx_gis:
-                #self.log("rhx_gis {} query_hash {}".format(rhx_gis, query_hash))
-                values = "{}:{}".format(rhx_gis, variables_json)
-                x_instagram_gis = hashlib.md5(values.encode()).hexdigest()
-                tmpsession.headers['x-instagram-gis'] = x_instagram_gis
-
             resp_json = self.get_json('graphql/query',
-                                      params={'query_hash': query_hash,
-                                              'variables': variables_json},
-                                      session=tmpsession)
+                                      params={'variables': variables_json,
+                                              'doc_id': doc_id,
+                                              'server_timestamps': 'true'},
+                                      session=tmpsession,
+                                      use_post=True)
         if 'status' not in resp_json:
             self.error("GraphQL response did not contain a \"status\" field.")
         return resp_json
@@ -482,7 +553,7 @@ class InstaloaderContext:
     def graphql_node_list(self, query_hash: str, query_variables: Dict[str, Any],
                           query_referer: Optional[str],
                           edge_extractor: Callable[[Dict[str, Any]], Dict[str, Any]],
-                          rhx_gis: Optional[str] = None,
+                          _rhx_gis: Optional[str] = None,
                           first_data: Optional[Dict[str, Any]] = None) -> Iterator[Dict[str, Any]]:
         """
         Retrieve a list of GraphQL nodes.
@@ -494,7 +565,7 @@ class InstaloaderContext:
         def _query():
             query_variables['first'] = self._graphql_page_length
             try:
-                return edge_extractor(self.graphql_query(query_hash, query_variables, query_referer, rhx_gis))
+                return edge_extractor(self.graphql_query(query_hash, query_variables, query_referer))
             except QueryReturnedBadRequestException:
                 new_page_length = int(self._graphql_page_length / 2)
                 if new_page_length >= 12:
@@ -607,11 +678,11 @@ class InstaloaderContext:
         else:
             if resp.status_code == 403:
                 # suspected invalid URL signature
-                raise QueryReturnedForbiddenException("403 when accessing {}.".format(url))
+                raise QueryReturnedForbiddenException(self._response_error(resp))
             if resp.status_code == 404:
                 # 404 not worth retrying.
-                raise QueryReturnedNotFoundException("404 when accessing {}.".format(url))
-            raise ConnectionException("HTTP error code {}.".format(resp.status_code))
+                raise QueryReturnedNotFoundException(self._response_error(resp))
+            raise ConnectionException(self._response_error(resp))
 
     def get_and_write_raw(self, url: str, filename: str) -> None:
         """Downloads and writes anonymously-requested raw data into a file.
@@ -637,22 +708,11 @@ class InstaloaderContext:
         else:
             if resp.status_code == 403:
                 # suspected invalid URL signature
-                raise QueryReturnedForbiddenException("403 when accessing {}.".format(url))
+                raise QueryReturnedForbiddenException(self._response_error(resp))
             if resp.status_code == 404:
                 # 404 not worth retrying.
-                raise QueryReturnedNotFoundException("404 when accessing {}.".format(url))
-            raise ConnectionException("HTTP error code {}.".format(resp.status_code))
-
-    @property
-    def root_rhx_gis(self) -> Optional[str]:
-        """rhx_gis string returned in the / query."""
-        if self.is_logged_in:
-            # At the moment, rhx_gis seems to be required for anonymous requests only. By returning None when logged
-            # in, we can save the root_rhx_gis lookup query.
-            return None
-        if self._root_rhx_gis is None:
-            self._root_rhx_gis = self.get_json('', {}).get('rhx_gis', '')
-        return self._root_rhx_gis or None
+                raise QueryReturnedNotFoundException(self._response_error(resp))
+            raise ConnectionException(self._response_error(resp))
 
 
 class RateController:

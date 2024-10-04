@@ -77,7 +77,7 @@ def _requires_login(func: Callable) -> Callable:
     @wraps(func)
     def call(instaloader, *args, **kwargs):
         if not instaloader.context.is_logged_in:
-            raise LoginRequiredException("--login=USERNAME required.")
+            raise LoginRequiredException("Login required.")
         return func(instaloader, *args, **kwargs)
     return call
 
@@ -643,11 +643,16 @@ class Instaloader:
     def login(self, user: str, passwd: str) -> None:
         """Log in to instagram with given username and password and internally store session object.
 
-        :raises InvalidArgumentException: If the provided username does not exist.
         :raises BadCredentialsException: If the provided password is wrong.
-        :raises ConnectionException: If connection to Instagram failed.
         :raises TwoFactorAuthRequiredException: First step of 2FA login done, now call
-           :meth:`Instaloader.two_factor_login`."""
+           :meth:`Instaloader.two_factor_login`.
+        :raises LoginException: An error happened during login (for example, an invalid response was received).
+           Or if the provided username does not exist.
+
+        .. versionchanged:: 4.12
+           Raises LoginException instead of ConnectionException when an error happens.
+           Raises LoginException instead of InvalidArgumentException when the username does not exist.
+        """
         self.context.login(user, passwd)
 
     def two_factor_login(self, two_factor_code) -> None:
@@ -717,7 +722,7 @@ class Instaloader:
         # Download the image(s) / video thumbnail and videos within sidecars if desired
         downloaded = True
         if post.typename == 'GraphSidecar':
-            if self.download_pictures or self.download_videos:
+            if (self.download_pictures or self.download_videos) and post.mediacount > 0:
                 if not _all_already_downloaded(
                         filename_template, enumerate(
                             (post.get_is_videos()[i]
@@ -861,8 +866,9 @@ class Instaloader:
                 last_scraped = latest_stamps.get_last_story_timestamp(name)
                 scraped_timestamp = datetime.now().astimezone()
             for item in user_story.get_items():
-                if latest_stamps is not None and item.date_local <= last_scraped:
-                    break
+                if latest_stamps is not None:
+                    if item.date_local <= last_scraped:
+                        break
                 if storyitem_filter is not None and not storyitem_filter(item):
                     self.context.log("<{} skipped>".format(item), flush=True)
                     continue
@@ -1404,7 +1410,8 @@ class Instaloader:
                           post_filter: Optional[Callable[[Post], bool]] = None,
                           storyitem_filter: Optional[Callable[[Post], bool]] = None,
                           raise_errors: bool = False,
-                          latest_stamps: Optional[LatestStamps] = None):
+                          latest_stamps: Optional[LatestStamps] = None,
+                          max_count: Optional[int] = None):
         """High-level method to download set of profiles.
 
         :param profiles: Set of profiles to download.
@@ -1421,6 +1428,7 @@ class Instaloader:
            Whether :exc:`LoginRequiredException` and :exc:`PrivateProfileNotFollowedException` should be raised or
            catched and printed with :meth:`InstaloaderContext.error_catcher`.
         :param latest_stamps: :option:`--latest-stamps`.
+        :param max_count: Maximum count of posts to download.
 
         .. versionadded:: 4.1
 
@@ -1429,6 +1437,9 @@ class Instaloader:
 
         .. versionchanged:: 4.8
            Add `latest_stamps` parameter.
+
+        .. versionchanged:: 4.13
+           Add `max_count` parameter.
         """
 
         @contextmanager
@@ -1460,7 +1471,7 @@ class Instaloader:
                 if tagged or igtv or highlights or posts:
                     if (not self.context.is_logged_in and
                             profile.is_private):
-                        raise LoginRequiredException("--login=USERNAME required.")
+                        raise LoginRequiredException("Login required.")
                     if (self.context.username != profile.username and
                             profile.is_private and
                             not profile.followed_by_viewer):
@@ -1494,7 +1505,7 @@ class Instaloader:
                     posts_to_download = profile.get_posts()
                     self.posts_download_loop(posts_to_download, profile_name, fast_update, post_filter,
                                              total_count=profile.mediacount, owner_profile=profile,
-                                             takewhile=posts_takewhile, possibly_pinned=3)
+                                             takewhile=posts_takewhile, possibly_pinned=3, max_count=max_count)
                     if latest_stamps is not None and posts_to_download.first_item is not None:
                         latest_stamps.set_last_post_timestamp(profile_name,
                                                               posts_to_download.first_item.date_local)
@@ -1582,11 +1593,16 @@ class Instaloader:
     def interactive_login(self, username: str) -> None:
         """Logs in and internally stores session, asking user for password interactively.
 
-        :raises LoginRequiredException: when in quiet mode.
-        :raises InvalidArgumentException: If the provided username does not exist.
-        :raises ConnectionException: If connection to Instagram failed."""
+        :raises InvalidArgumentException: when in quiet mode.
+        :raises LoginException: If the provided username does not exist.
+        :raises ConnectionException: If connection to Instagram failed.
+
+        .. versionchanged:: 4.12
+           Raises InvalidArgumentException instead of LoginRequiredException when in quiet mode.
+           Raises LoginException instead of InvalidArgumentException when the username does not exist.
+        """
         if self.context.quiet:
-            raise LoginRequiredException("Quiet mode requires given password or valid session file.")
+            raise InvalidArgumentException("Quiet mode requires given password or valid session file.")
         try:
             password = None
             while password is None:
@@ -1605,3 +1621,10 @@ class Instaloader:
                 except BadCredentialsException as err:
                     print(err, file=sys.stderr)
                     pass
+
+    @property
+    def has_stored_errors(self) -> bool:
+        """Returns whether any error has been reported and stored to be repeated at program termination.
+
+        .. versionadded: 4.12"""
+        return self.context.has_stored_errors
