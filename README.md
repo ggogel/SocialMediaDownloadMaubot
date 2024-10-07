@@ -4,7 +4,7 @@ Share social media content directly in your Matrix room with this [Maubot](https
 
 Currently supported social media platforms:
   - Reddit
-  - Instagram
+  - Instagram (Might not work anymore because Instagram has massively restricted anonymous access.)
   - YouTube
   - TikTok
 
