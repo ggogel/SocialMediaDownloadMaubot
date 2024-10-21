@@ -509,7 +509,7 @@ class InstaloaderContext:
             variables_json = json.dumps(variables, separators=(',', ':'))
 
             resp_json = self.get_json('graphql/query',
-                                      params={'query_hash': query_hash,
+                                      params={'doc_id': query_hash,
                                               'variables': variables_json},
                                       session=tmpsession)
         if 'status' not in resp_json:
