@@ -7,7 +7,7 @@ import yarl
 import requests
 import asyncio
 import concurrent.futures
-
+from urllib.parse import urljoin
 
 from typing import Type
 from urllib.parse import quote
@@ -29,7 +29,7 @@ reddit_pattern = re.compile(r"((?:https?:)?\/\/)?((?:www|m|old|nm)\.)?((?:reddit
 instagram_pattern = re.compile(r"(?:https?:\/\/)?(?:www\.)?instagram\.com\/?([a-zA-Z0-9\.\_\-]+)?\/([p]+)?([reel]+)?([tv]+)?([stories]+)?\/([a-zA-Z0-9\-\_\.]+)\/?([0-9]+)?")
 youtube_pattern = re.compile(r"((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu\.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?")
 tiktok_pattern = re.compile(r"((?:https?:)?\/\/)?((?:www|m|vm)\.)?((?:tiktok\.com))(\/[@a-zA-Z0-9\-\_\.]+)?(\/video\/)?([a-zA-Z0-9\-\_]+)?")
-
+bluesky_pattern = re.compile(r"((?:https?:)?\/\/)?((?:www|bsky)\.)?((?:bsky\.app))(\/profile\/[a-zA-Z0-9\-\_\.]+)(\/post\/[a-zA-Z0-9\-\_]+)")
 
 class SocialMediaDownloadPlugin(Plugin):
     async def start(self) -> None:
@@ -66,6 +66,11 @@ class SocialMediaDownloadPlugin(Plugin):
             await evt.mark_read()
             if self.config["tiktok.enabled"]:
                 await self.handle_tiktok(evt, url_tup)
+        
+        if self.config["bluesky.enabled"]:
+            for url_tup in bluesky_pattern.findall(evt.content.body):
+                await evt.mark_read()
+                await self.handle_bluesky(evt, url_tup)
 
     async def get_ttdownloader_params(self, tokensDict, url) -> list:
         cookies = {
@@ -311,3 +316,123 @@ class SocialMediaDownloadPlugin(Plugin):
             elif self.config["reddit.image"] or self.config["reddit.video"]:
                 self.log.warning(f"Unknown media type {query_url}: {mime_type}")
                 return
+
+    async def handle_bluesky(self, evt, url_tup):
+        # Get user and post ID from the URL
+        url = ''.join(url_tup)
+        user, post_id = url.split("/")[-3], url.split("/")[-1]
+        
+        # Get the DID of the user
+        did_url = f"https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle={user}"
+        async with self.http.get(did_url) as response:
+            if response.status != 200:
+                self.log.warning(f"Failed to resolve handle {user}: HTTP {response.status}")
+                return
+            did_data = await response.json()
+            did = did_data.get("did")
+            if not did:
+                self.log.warning(f"No DID found for handle {user}")
+                return
+            
+        self.log.info(f"Resolved Bluesky handle {user} to DID {did}")
+            
+        # Get the post using the DID and post ID and Bluesky's public relay API
+        post_url = f"https://public.api.bsky.app/xrpc/app.bsky.feed.getPosts?uris=at://{did}/app.bsky.feed.post/{post_id}"
+        async with self.http.get(post_url) as response:
+            if response.status != 200:
+                self.log.warning(f"Failed to fetch post {post_id}: HTTP {response.status}")
+                return
+            post_data = await response.json()
+            post = post_data.get("posts", [])[0]
+            if not post:
+                self.log.warning(f"No post found for ID {post_id}")
+                return
+            
+            content = post.get("record", {}).get("text", "")
+            if content and self.config["bluesky.info"]:
+                await evt.reply(TextMessageEventContent(msgtype=MessageType.TEXT, format=Format.HTML, body=content, formatted_body=content))
+
+            # Handle attachments
+            embed = post.get("embed", {})
+            if embed:
+                if "images" in embed:
+                    # We'll use the fullsize image if available, otherwise the thumbnail
+                    for image in embed["images"]:
+                        fullsize = image.get("fullsize")
+                        thumb = image.get("thumb")
+                        alt = image.get("alt", "Bluesky Image")
+                        if fullsize:
+                            media_url = fullsize
+                        elif thumb:
+                            media_url = thumb
+                        else:
+                            # Are there other types of images that could be found?
+                            continue
+                        
+                        mime_type = mimetypes.guess_type(media_url)[0] or "image/jpeg"
+                        file_name = f"{post_id}_image.jpg"
+                        await self.send_image(evt, media_url, mime_type, file_name)
+                elif "playlist" in embed:
+                    playlist_url = embed["playlist"]
+                    thumbnail_url = embed.get("thumbnail")
+                    self.log.info(f"Video URL: {playlist_url}, Thumbnail URL: {thumbnail_url}")
+                    
+                    if playlist_url and self.config["bluesky.video"]:
+                        media_bytes = await self.download_m3u8_file(playlist_url)
+                        if not media_bytes:
+                            self.log.warning(f"Failed to download video from {playlist_url}")
+                            return
+                        
+                        mime_type = "video/mp4"
+                        file_name = f"{post_id}_video.mp4"
+                        uri = await self.client.upload_media(media_bytes, mime_type=mime_type, filename=file_name)
+                        await self.client.send_file(evt.room_id, url=uri, info=BaseFileInfo(mimetype=mime_type, size=len(media_bytes)), file_name=file_name, file_type=MessageType.VIDEO)
+                    
+                    if thumbnail_url and self.config["bluesky.thumbnail"]:
+                        mime_type = mimetypes.guess_type(thumbnail_url)[0] or "image/jpeg"
+                        file_name = f"{post_id}_thumbnail.jpg"
+                        await self.send_image(evt, thumbnail_url, mime_type, file_name)
+    
+    async def download_m3u8_file(self, m3u8_url: str):
+        async with self.http.get(m3u8_url) as response:
+            if response.status != 200:
+                self.log.warning(f"Failed to fetch playlist: {m3u8_url} — HTTP {response.status}")
+                return b''
+            playlist = await response.text()
+        
+        if "#EXT-X-STREAM-INF" in playlist:
+            lines = playlist.strip().splitlines()
+            next_m3u8 = next((line for line in lines if not line.startswith("#")), None)
+            if not next_m3u8:
+                self.log.warning(f"No variant found in master playlist: {m3u8_url}")
+                return b''
+            nested_url = urljoin(m3u8_url, next_m3u8)
+            return await self.download_m3u8_file(nested_url)
+
+        segment_urls = []
+        base_url = m3u8_url.rsplit("/", 1)[0] + "/"
+        for line in playlist.strip().splitlines():
+            if line.startswith("#") or not line.strip():
+                continue
+            segment_urls.append(urljoin(base_url, line.strip()))
+
+        if not segment_urls:
+            self.log.warning(f"No segments found in: {m3u8_url}")
+            return b''
+
+        segment_data = []
+        for i, url in enumerate(segment_urls):
+            async with self.http.get(url) as segment_response:
+                if segment_response.status != 200:
+                    self.log.warning(f"Failed to download segment {i + 1}: {url} — HTTP {segment_response.status}")
+                    continue
+                segment_data.append(await segment_response.read())
+                if i % 10 == 0:
+                    self.log.debug(f"Downloaded segment {i + 1}/{len(segment_urls)}")
+
+        if not segment_data:
+            self.log.warning("All segment downloads failed.")
+            return b''
+
+        self.log.info("All segments downloaded.")
+        return b"".join(segment_data)

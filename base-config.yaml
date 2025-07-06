@@ -16,4 +16,10 @@ youtube:
 tiktok:
   enabled: True
   video: True
+bluesky:
+  enabled: True
+  info: True
+  image: True
+  video: True
+  thumbnail: True
 respond_to_notice: False
