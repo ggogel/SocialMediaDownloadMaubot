@@ -274,7 +274,7 @@ class SocialMediaDownloadPlugin(Plugin):
                     for media_id, media_info in post_data['media_metadata'].items():
                         media_url = (media_info['s']['u']).replace("preview", "i")
                         mime_type = media_info['m']
-                        file_extension = mimetypes.guess_extension(mime_type)
+                        file_extension = mimetypes.guess_extension(mime_type, strict=False)
                         file_name = media_id + '' if file_extension is None else file_extension
                         await self.send_image(evt, media_url, mime_type, file_name)
                     return
@@ -289,7 +289,7 @@ class SocialMediaDownloadPlugin(Plugin):
                 media_url = fallback_url.split('?')[0]
                 mime_type = mimetypes.guess_type(media_url)[0]
 
-            file_extension = mimetypes.guess_extension(mime_type)
+            file_extension = mimetypes.guess_extension(mime_type, strict=False)
             file_name = name + file_extension
 
             if "image" in mime_type and self.config["reddit.image"]:
