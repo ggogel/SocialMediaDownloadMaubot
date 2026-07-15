@@ -13,6 +13,7 @@ youtube:
   enabled: True
   info: True
   thumbnail: True
+  individious: True
 tiktok:
   enabled: True
   video: True
