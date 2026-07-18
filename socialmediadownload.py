@@ -25,7 +25,14 @@ import instaloader
 class Config(BaseProxyConfig):
     def do_update(self, helper: ConfigUpdateHelper) -> None:
         for prefix in ["reddit", "instagram", "youtube", "tiktok"]:
-            for suffix in ["enabled", "info", "image", "video", "thumbnail"]:
+            for suffix in [
+                "enabled",
+                "info",
+                "image",
+                "video",
+                "thumbnail",
+                "invidious",
+            ]:
                 helper.copy(f"{prefix}.{suffix}")
 
         helper.copy("respond_to_notice")
@@ -209,9 +216,9 @@ class SocialMediaDownloadPlugin(Plugin):
         query_string = urllib.parse.urlencode(params)
         return f"{query_url}?{query_string}"
 
-    def get_individious_redirect_url(self, video_id: str) -> str:
+    def get_invidious_redirect_url(self, video_id: str) -> str:
         """
-        Returns a URL to use individious instances.
+        Returns a URL to use invidious instances.
         Example URL: redirect.invidious.io/watch?v={video_id}
         """
         return f"https://redirect.invidious.io/watch?v={video_id}"
@@ -234,13 +241,14 @@ class SocialMediaDownloadPlugin(Plugin):
         if self.config["youtube.info"]:
             await evt.reply(data["title"])
 
-        if self.config["youtube.individious"]:
-            indv_url: str = self.get_individious_redirect_url(video_id)
+        if self.config["youtube.invidious"]:
+            invidious_url: str = self.get_invidious_redirect_url(video_id)
             await evt.reply(
                 TextMessageEventContent(
                     msgtype=MessageType.TEXT,
                     format=Format.HTML,
-                    formatted_body=f"""<p>Wanna use a libre frontend? Try this: {indv_url}</p>""",
+                    body=f"Wanna use a libre frontend? Try this: {invidious_url}",
+                    formatted_body=f"<p>Wanna use a libre frontend? Try this: {invidious_url}</p>",
                 )
             )
 
