@@ -4,7 +4,12 @@ version = "0.0.1"
 description = "Share social media content directly in your Matrix room with this Maubot plugin!"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["mautrix>=0.21.1", "requests>=2.34.2", "yarl>=1.24.2"]
+dependencies = [
+    "maubot>=0.6.0",
+    "mautrix>=0.21.1",
+    "requests>=2.34.2",
+    "yarl>=1.24.2",
+]
 
 [tool.pyrefly]
 project-includes = ["src", "instaloader", "."]
