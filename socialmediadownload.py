@@ -179,14 +179,7 @@ class SocialMediaDownloadPlugin(Plugin):
 
         if self.config["youtube.invidious"]:
             inv_url: str = f"https://redirect.invidious.io/watch?v={video_id}"
-            await evt.reply(
-                TextMessageEventContent(
-                    msgtype=MessageType.TEXT,
-                    format=Format.HTML,
-                    body=f"Wanna use a libre frontend? Try this: {inv_url}",
-                    formatted_body=f"<p>Wanna use a libre frontend? Try this: {inv_url}</p>",
-                )
-            )
+            await evt.reply(f"Want to use a libre frontend? Try this: {inv_url}")
 
         if self.config["youtube.thumbnail"]:
             thumbnail_link = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
