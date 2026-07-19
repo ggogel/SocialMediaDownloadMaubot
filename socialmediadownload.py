@@ -275,7 +275,7 @@ class SocialMediaDownloadPlugin(Plugin):
                         media_url = (media_info['s']['u']).replace("preview", "i")
                         mime_type = media_info['m']
                         file_extension = mimetypes.guess_extension(mime_type, strict=False)
-                        file_name = media_id + '' if file_extension is None else file_extension
+                        file_name = f"{media_id}{file_extension or ''}"
                         await self.send_image(evt, media_url, mime_type, file_name)
                     return
                 elif 'secure_media' in post_data and 'reddit_video' in post_data['secure_media']:
