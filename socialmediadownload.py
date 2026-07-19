@@ -20,7 +20,9 @@ from maubot.handlers import event
 class Config(BaseProxyConfig):
     def do_update(self, helper: ConfigUpdateHelper) -> None:
         for prefix in ["reddit", "instagram", "youtube", "tiktok"]:
-            for suffix in ["enabled", "info", "image", "video", "thumbnail"]:
+            for suffix in [
+                "enabled", "info", "image", "video", "thumbnail", "invidious"
+            ]:
                 helper.copy(f"{prefix}.{suffix}")
 
         helper.copy("respond_to_notice")
@@ -174,6 +176,17 @@ class SocialMediaDownloadPlugin(Plugin):
 
         if self.config["youtube.info"]:
             await evt.reply(data['title'])
+
+        if self.config["youtube.invidious"]:
+            inv_url: str = f"https://redirect.invidious.io/watch?v={video_id}"
+            await evt.reply(
+                TextMessageEventContent(
+                    msgtype=MessageType.TEXT,
+                    format=Format.HTML,
+                    body=f"Wanna use a libre frontend? Try this: {inv_url}",
+                    formatted_body=f"<p>Wanna use a libre frontend? Try this: {inv_url}</p>",
+                )
+            )
 
         if self.config["youtube.thumbnail"]:
             thumbnail_link = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
