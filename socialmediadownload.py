@@ -151,6 +151,9 @@ class SocialMediaDownloadPlugin(Plugin):
     async def get_youtube_video_id(self, url):
         if "youtu.be" in url:
             video_id = url.split("youtu.be/")[1]
+        elif "/shorts/" in url:
+            url = re.sub("shorts/", "watch?v=", url)
+            video_id = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["v"][0]
         else:
             video_id = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)['v'][0]
         return video_id.split("?", 1)[0]
