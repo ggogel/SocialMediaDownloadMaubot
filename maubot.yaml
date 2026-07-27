@@ -9,4 +9,4 @@ main_class: socialmediadownload/SocialMediaDownloadPlugin
 database: false
 config: true
 extra_files:
- - base-config.yaml
+  - base-config.yaml

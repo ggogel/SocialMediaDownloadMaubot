@@ -31,13 +31,11 @@ jobs:
       if: env.RELEASE_EXIST == 'false'
       run: |
         echo "Changelog:" > CHANGELOG.md
-        git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"- %h: %s" -- base-config.yaml maubot.yaml socialmediadownload.py instaloader >> CHANGELOG.md
+        git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"- %h: %s" -- base-config.yaml maubot.yaml requirements.txt scripts socialmediadownload.py >> CHANGELOG.md
 
     - name: Package Release
       if: env.RELEASE_EXIST == 'false'
-      run: |
-        zip -r package.zip base-config.yaml maubot.yaml socialmediadownload.py instaloader
-        mv package.zip package.mbp
+      run: ./scripts/build-mbp.sh package.mbp
 
     - name: Create and Upload GitHub Release
       if: env.RELEASE_EXIST == 'false'
